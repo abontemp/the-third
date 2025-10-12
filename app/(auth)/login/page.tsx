@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react'
+import Link from 'next/link'
+import { Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true)
@@ -65,8 +67,8 @@ export default function LoginPage() {
         if (error) throw error
         setSuccess('Compte créé ! Vérifiez votre email.')
       }
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Une erreur est survenue')
     } finally {
       setLoading(false)
     }
@@ -75,12 +77,12 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
       <div className="absolute top-8 left-8">
-        <a href="/" className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
           <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-orange-500 rounded-lg flex items-center justify-center font-bold text-white">
             T3
           </div>
           <span className="text-xl font-bold text-white">The Third</span>
-        </a>
+        </Link>
       </div>
 
       <div className="w-full max-w-md">
