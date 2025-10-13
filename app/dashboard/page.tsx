@@ -1,84 +1,102 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Users, Calendar, Plus, LogOut, Loader, AlertCircle } from 'lucide-react'
+import { Users, Calendar, Plus, LogOut, Loader } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
-export default function DashboardPage() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(true)
-const [team, setTeam] = useState<{
+type Team = {
   id: string
   name: string
   sport: string
   description?: string
   userRole: string
-} | null>(null)
-const [members, setMembers] = useState<Array<{
-  id: string
-  role: string
-  joined_at: string
-  user_id: string
-}>>([])
+  memberCount: number
+}
 
+export default function DashboardPage() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+  const [teams, setTeams] = useState<Team[]>([])
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
+  const [members, setMembers] = useState<Array<{
+    id: string
+    role: string
+    joined_at: string
+    user_id: string
+  }>>([])
 
   useEffect(() => {
-  loadDashboard()
-}, []) // eslint-disable-line react-hooks/exhaustive-deps
+    loadDashboard()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDashboard = async () => {
     try {
       const supabase = createClient()
       
-      // Récupérer l'utilisateur connecté
       const { data: { user: currentUser } } = await supabase.auth.getUser()
       if (!currentUser) {
         router.push('/login')
         return
       }
 
-      // Récupérer la première équipe de l'utilisateur
-      const { data: membership } = await supabase
+      // Récupérer toutes les équipes de l'utilisateur
+      const { data: memberships } = await supabase
         .from('team_members')
         .select('team_id, role')
         .eq('user_id', currentUser.id)
-        .limit(1)
-        .single()
 
-      if (!membership) {
-        // Pas d'équipe, rediriger vers onboarding
+      if (!memberships || memberships.length === 0) {
         router.push('/onboarding')
         return
       }
 
-      // Charger l'équipe
-      const { data: teamData } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('id', membership.team_id)
-        .single()
+      // Charger les détails de toutes les équipes
+      const teamsData = await Promise.all(
+        memberships.map(async (membership) => {
+          const { data: teamData } = await supabase
+            .from('teams')
+            .select('*')
+            .eq('id', membership.team_id)
+            .single()
 
-      setTeam({ ...teamData, userRole: membership.role })
+          const { count } = await supabase
+            .from('team_members')
+            .select('*', { count: 'exact', head: true })
+            .eq('team_id', membership.team_id)
 
-      // Charger les membres
-      const { data: membersData } = await supabase
-        .from('team_members')
-        .select(`
-          id,
-          role,
-          joined_at,
-          user_id
-        `)
-        .eq('team_id', membership.team_id)
+          return {
+            ...teamData,
+            userRole: membership.role,
+            memberCount: count || 0
+          }
+        })
+      )
 
-      setMembers(membersData || [])
+      setTeams(teamsData)
+
+      // Si une seule équipe, la sélectionner automatiquement
+      if (teamsData.length === 1) {
+        await loadTeamDetails(teamsData[0].id, teamsData[0])
+      }
 
     } catch (err) {
       console.error('Erreur:', err)
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadTeamDetails = async (teamId: string, team: Team) => {
+    setSelectedTeam(team)
+    
+    const supabase = createClient()
+    const { data: membersData } = await supabase
+      .from('team_members')
+      .select('id, role, joined_at, user_id')
+      .eq('team_id', teamId)
+
+    setMembers(membersData || [])
   }
 
   const handleLogout = async () => {
@@ -95,29 +113,60 @@ const [members, setMembers] = useState<Array<{
     )
   }
 
-  if (!team) {
+  // Sélection d'équipe si plusieurs
+  if (!selectedTeam && teams.length > 1) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 max-w-md">
-          <AlertCircle className="text-red-400 mb-4" size={32} />
-          <h2 className="text-white text-xl font-bold mb-2">Aucune équipe trouvée</h2>
-          <p className="text-gray-300 mb-4">Vous devez créer ou rejoindre une équipe.</p>
-          <button
-            onClick={() => router.push('/onboarding')}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
-          >
-            Aller à l&apos;onboarding
-          </button>
+        <div className="w-full max-w-2xl">
+          <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-8">
+            <h1 className="text-3xl font-bold text-white mb-2 text-center">Sélectionnez votre équipe</h1>
+            <p className="text-gray-400 mb-8 text-center">Vous faites partie de {teams.length} équipes</p>
+
+            <div className="space-y-3">
+              {teams.map((team) => (
+                <button
+                  key={team.id}
+                  onClick={() => loadTeamDetails(team.id, team)}
+                  className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-white/10 hover:border-blue-500/50 rounded-xl p-6 text-left transition"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 className="text-xl font-bold text-white">{team.name}</h3>
+                      <p className="text-blue-400 text-sm">{team.sport}</p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      team.userRole === 'creator' ? 'bg-yellow-500/20 text-yellow-300' :
+                      team.userRole === 'manager' ? 'bg-purple-500/20 text-purple-300' :
+                      'bg-blue-500/20 text-blue-300'
+                    }`}>
+                      {team.userRole === 'creator' ? 'Créateur' :
+                       team.userRole === 'manager' ? 'Manager' : 'Membre'}
+                    </span>
+                  </div>
+                  {team.description && (
+                    <p className="text-gray-400 text-sm">{team.description}</p>
+                  )}
+                  <p className="text-gray-500 text-sm mt-2">{team.memberCount} membres</p>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => router.push('/onboarding')}
+              className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition"
+            >
+              Rejoindre une autre équipe
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
-  const isManager = team.userRole === 'creator' || team.userRole === 'manager'
+  const isManager = selectedTeam && (selectedTeam.userRole === 'creator' || selectedTeam.userRole === 'manager')
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      {/* Header */}
       <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -126,25 +175,33 @@ const [members, setMembers] = useState<Array<{
                 T3
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">{team.name}</h1>
-                <p className="text-xs text-gray-400">{team.sport}</p>
+                <h1 className="text-xl font-bold text-white">{selectedTeam?.name}</h1>
+                <p className="text-xs text-gray-400">{selectedTeam?.sport}</p>
               </div>
             </div>
 
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-gray-400 hover:text-white transition"
-            >
-              <LogOut size={20} />
-              <span className="hidden sm:inline">Déconnexion</span>
-            </button>
+            <div className="flex items-center gap-4">
+              {teams.length > 1 && (
+                <button
+                  onClick={() => setSelectedTeam(null)}
+                  className="text-sm text-gray-400 hover:text-white transition"
+                >
+                  Changer d&apos;équipe
+                </button>
+              )}
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 text-gray-400 hover:text-white transition"
+              >
+                <LogOut size={20} />
+                <span className="hidden sm:inline">Déconnexion</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Contenu principal */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Cartes statistiques */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6">
             <div className="flex items-center justify-between mb-2">
@@ -171,15 +228,9 @@ const [members, setMembers] = useState<Array<{
           </div>
         </div>
 
-        {/* Section membres */}
         <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6 mb-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-white">Membres de l&apos;équipe</h2>
-            {isManager && (
-              <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-sm">
-                Inviter
-              </button>
-            )}
           </div>
 
           <div className="space-y-3">
@@ -209,25 +260,24 @@ const [members, setMembers] = useState<Array<{
           </div>
         </div>
 
-        {/* Actions rapides */}
         {isManager && (
-  <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-6">
-    <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <button 
-        onClick={() => router.push('/vote/setup')}
-        className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
-      >
-        <Plus size={20} />
-        Créer un match & Vote
-      </button>
-      <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2">
-        <Calendar size={20} />
-        Historique
-      </button>
-    </div>
-  </div>
-)}
+          <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-6">
+            <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button 
+                onClick={() => router.push('/vote/setup')}
+                className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+              >
+                <Plus size={20} />
+                Créer un match & Vote
+              </button>
+              <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2">
+                <Calendar size={20} />
+                Historique
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

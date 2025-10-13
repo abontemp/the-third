@@ -47,19 +47,33 @@ export default function LoginPage() {
       const supabase = createClient()
       
       if (isLogin) {
-  const { error } = await supabase.auth.signInWithPassword({
-    email: formData.email,
-    password: formData.password,
-  })
-  if (error) throw error
-  setSuccess('Connexion réussie ! Redirection...')
-  
-  // Rediriger après connexion
-  setTimeout(() => {
-    window.location.href = '/onboarding'
-  }, 1000)
-}
-      else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        })
+        if (error) throw error
+        
+        // Vérifier si l'utilisateur a des équipes
+        const { data: { user: currentUser } } = await supabase.auth.getUser()
+        const { data: memberships } = await supabase
+          .from('team_members')
+          .select('team_id')
+          .eq('user_id', currentUser?.id)
+        
+        if (memberships && memberships.length > 0) {
+          // A des équipes, rediriger vers dashboard
+          setSuccess('Connexion réussie ! Redirection...')
+          setTimeout(() => {
+            window.location.href = '/dashboard'
+          }, 1000)
+        } else {
+          // Pas d'équipe, rediriger vers onboarding
+          setSuccess('Connexion réussie ! Redirection...')
+          setTimeout(() => {
+            window.location.href = '/onboarding'
+          }, 1000)
+        }
+      } else {
         const { error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -71,11 +85,14 @@ export default function LoginPage() {
           }
         })
         if (error) throw error
-        setSuccess('Compte créé ! Vérifiez votre email.')
+        setSuccess('Compte créé ! Redirection...')
+        
+        // Nouveau compte = pas d'équipe, aller à onboarding
         setTimeout(() => {
-            window.location.href = '/onboarding'
-}           , 2000)
+          window.location.href = '/onboarding'
+        }, 1500)
       }
+      
     } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Une erreur est survenue')
     } finally {

@@ -84,12 +84,7 @@ const [searching, setSearching] = useState(false)
     }
   }
 
-  const handleSearchTeams = async () => {
-    if (!searchQuery.trim()) {
-      setError("Entrez un nom d'équipe")
-      return
-    }
-
+const handleSearchTeams = async () => {
     setSearching(true)
     setError('')
     setSearchResults([])
@@ -99,12 +94,11 @@ const [searching, setSearching] = useState(false)
       const { data, error } = await supabase
         .from('teams')
         .select('id, name, sport, description')
-        .ilike('name', `%${searchQuery}%`)
-        .limit(10)
+        .limit(50) // Limite à 50 équipes
 
       if (error) throw error
       setSearchResults(data || [])
-      if (data && data.length === 0) setError('Aucune équipe trouvée')
+      if (data && data.length === 0) setError('Aucune équipe disponible')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur')
     } finally {
@@ -112,7 +106,7 @@ const [searching, setSearching] = useState(false)
     }
   }
 
-  const handleJoinRequest = async (teamId: string, teamName: string) => {
+const handleJoinRequest = async (teamId: string, teamName: string) => {
     setLoading(true)
     setError('')
 
@@ -121,18 +115,23 @@ const [searching, setSearching] = useState(false)
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Vous devez être connecté')
 
-      const { error: requestError } = await supabase
-        .from('join_requests')
+      // Rejoindre directement l'équipe (sans validation)
+      const { error: memberError } = await supabase
+        .from('team_members')
         .insert([{
           team_id: teamId,
           user_id: user.id,
-          status: 'pending'
+          role: 'member'
         }])
 
-      if (requestError) throw requestError
+      if (memberError) throw memberError
 
-      setSuccess(`Demande envoyée à "${teamName}" !`)
-      setSearchResults(searchResults.filter(t => t.id !== teamId))
+      setSuccess(`Vous avez rejoint "${teamName}" !`)
+      
+      setTimeout(() => {
+        router.push('/dashboard')
+      }, 1500)
+
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur")
     } finally {
