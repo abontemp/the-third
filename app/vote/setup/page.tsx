@@ -209,7 +209,7 @@ const [team, setTeam] = useState<{ id: string; name: string } | null>(null)
         router.push(`/vote/${session.id}`)
       }, 1500)
 
-} catch (err: unknown) {      
+} catch (err: unknown) {
     console.error('Erreur:', err)
       setError(err.message || "Erreur lors de la création")
     } finally {
