@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Users, Calendar, Send, AlertCircle, CheckCircle, Loader } from 'lucide-react'
+import { ArrowLeft, Send, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 
 type TeamMember = {
   id: string
@@ -25,7 +25,7 @@ export default function VoteSetupPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   
-  const [team, setTeam] = useState<any>(null)
+const [team, setTeam] = useState<{ id: string; name: string } | null>(null)
   const [members, setMembers] = useState<TeamMember[]>([])
   const [seasons, setSeasons] = useState<Season[]>([])
   
@@ -38,8 +38,8 @@ export default function VoteSetupPage() {
   })
 
   useEffect(() => {
-    loadData()
-  }, [])
+  loadData()
+}, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
     try {
@@ -209,8 +209,8 @@ export default function VoteSetupPage() {
         router.push(`/vote/${session.id}`)
       }, 1500)
 
-    } catch (err: any) {
-      console.error('Erreur:', err)
+} catch (err: unknown) {      
+    console.error('Erreur:', err)
       setError(err.message || "Erreur lors de la création")
     } finally {
       setSubmitting(false)

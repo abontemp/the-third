@@ -21,12 +21,11 @@ const [members, setMembers] = useState<Array<{
   joined_at: string
   user_id: string
 }>>([])
-const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
 
 
   useEffect(() => {
-    loadDashboard()
-  }, [])
+  loadDashboard()
+}, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDashboard = async () => {
     try {
@@ -38,7 +37,6 @@ const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
         router.push('/login')
         return
       }
-      setUser(currentUser)
 
       // Récupérer la première équipe de l'utilisateur
       const { data: membership } = await supabase
