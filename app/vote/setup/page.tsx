@@ -50,14 +50,22 @@ export default function VoteSetupPage() {
         return
       }
 
-      // Récupérer l'équipe de l'utilisateur
-      const { data: membership } = await supabase
+        // Récupérer toutes les équipes de l'utilisateur
+      const { data: memberships } = await supabase
         .from('team_members')
         .select('team_id, role')
         .eq('user_id', user.id)
-        .single()
 
-      if (!membership || (membership.role !== 'creator' && membership.role !== 'manager')) {
+      if (!memberships || memberships.length === 0) {
+        setError("Vous ne faites partie d'aucune équipe")
+        router.push('/onboarding')
+        return
+      }
+
+      // Prendre la première équipe où l'utilisateur est manager ou créateur
+      const membership = memberships.find(m => m.role === 'creator' || m.role === 'manager') || memberships[0]
+
+      if (membership.role !== 'creator' && membership.role !== 'manager') {
         setError("Vous devez être manager pour créer un match")
         return
       }
@@ -68,7 +76,7 @@ export default function VoteSetupPage() {
         .eq('id', membership.team_id)
         .single()
 
-        
+
       // Charger les membres
       const { data: membersData } = await supabase
         .from('team_members')
