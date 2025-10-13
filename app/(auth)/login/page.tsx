@@ -47,13 +47,19 @@ export default function LoginPage() {
       const supabase = createClient()
       
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password,
-        })
-        if (error) throw error
-        setSuccess('Connexion réussie !')
-      } else {
+  const { error } = await supabase.auth.signInWithPassword({
+    email: formData.email,
+    password: formData.password,
+  })
+  if (error) throw error
+  setSuccess('Connexion réussie ! Redirection...')
+  
+  // Rediriger après connexion
+  setTimeout(() => {
+    window.location.href = '/onboarding'
+  }, 1000)
+}
+      else {
         const { error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
