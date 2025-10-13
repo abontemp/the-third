@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Users, Plus, Search, ArrowRight, X, AlertCircle, CheckCircle, Loader } from 'lucide-react'
+import { Plus, Search, ArrowRight, X, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
@@ -19,8 +19,13 @@ export default function OnboardingPage() {
   })
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
-  const [searching, setSearching] = useState(false)
+const [searchResults, setSearchResults] = useState<Array<{
+  id: string
+  name: string
+  sport: string
+  description?: string
+}>>([]) 
+const [searching, setSearching] = useState(false)
 
   const sports = [
     'Football', 'Basketball', 'Volleyball', 'Handball', 'Rugby',
