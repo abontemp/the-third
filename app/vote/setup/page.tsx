@@ -74,7 +74,7 @@ const [team, setTeam] = useState<{ id: string; name: string } | null>(null)
       // Charger les membres
       const { data: membersData } = await supabase
         .from('team_members')
-        .select('id, user_id, role')
+        .select('id, user_id, role, email')
         .eq('team_id', membership.team_id)
 
       setMembers(membersData || [])
@@ -211,7 +211,11 @@ const [team, setTeam] = useState<{ id: string; name: string } | null>(null)
 
 } catch (err: unknown) {
     console.error('Erreur:', err)
-      setError(err.message || "Erreur lors de la création")
+      setError(
+        typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message?: string }).message)
+          : "Erreur lors de la création"
+      )
     } finally {
       setSubmitting(false)
     }
