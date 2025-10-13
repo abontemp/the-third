@@ -25,7 +25,6 @@ export default function VoteSetupPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   
-const [team, setTeam] = useState<{ id: string; name: string } | null>(null)
   const [members, setMembers] = useState<TeamMember[]>([])
   const [seasons, setSeasons] = useState<Season[]>([])
   
@@ -69,8 +68,7 @@ const [team, setTeam] = useState<{ id: string; name: string } | null>(null)
         .eq('id', membership.team_id)
         .single()
 
-      setTeam(teamData)
-
+        
       // Charger les membres
       const { data: membersData } = await supabase
         .from('team_members')

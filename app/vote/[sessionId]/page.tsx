@@ -62,31 +62,36 @@ export default function VotePage() {
         return
       }
 
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('voting_sessions')
-        .select(`
-          id,
-          status,
-          matches (
-            opponent,
-            match_date,
-            location
-          )
-        `)
-        .eq('id', sessionId)
-        .single()
+const { data: sessionData, error: sessionError } = await supabase
+  .from('voting_sessions')
+  .select(`
+    id,
+    status,
+    matches (
+      opponent,
+      match_date,
+      location
+    )
+  `)
+  .eq('id', sessionId)
+  .single()
 
-      if (sessionError) throw sessionError
+if (sessionError) throw sessionError
 
-      setSession({
-        id: sessionData.id,
-        status: sessionData.status,
-        match: sessionData.matches as {
-          opponent: string
-          match_date: string
-          location?: string
-        }
-      })
+// Extraction correcte des données du match
+const matchData = Array.isArray(sessionData.matches) 
+  ? sessionData.matches[0] 
+  : sessionData.matches
+
+setSession({
+  id: sessionData.id,
+  status: sessionData.status,
+  match: {
+    opponent: matchData?.opponent || '',
+    match_date: matchData?.match_date || '',
+    location: matchData?.location
+  }
+})
 
       if (sessionData.status === 'closed') {
         setError('Cette session de vote est fermée')
