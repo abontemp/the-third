@@ -213,20 +213,23 @@ const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
 
         {/* Actions rapides */}
         {isManager && (
-          <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-6">
-            <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <button className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2">
-                <Plus size={20} />
-                Créer une saison
-              </button>
-              <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2">
-                <Calendar size={20} />
-                Créer un match
-              </button>
-            </div>
-          </div>
-        )}
+  <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-6">
+    <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <button 
+        onClick={() => router.push('/vote/setup')}
+        className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+      >
+        <Plus size={20} />
+        Créer un match & Vote
+      </button>
+      <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2">
+        <Calendar size={20} />
+        Historique
+      </button>
+    </div>
+  </div>
+)}
       </div>
     </div>
   )
