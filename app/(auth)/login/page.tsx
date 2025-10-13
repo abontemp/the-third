@@ -66,6 +66,9 @@ export default function LoginPage() {
         })
         if (error) throw error
         setSuccess('Compte créé ! Vérifiez votre email.')
+        setTimeout(() => {
+            window.location.href = '/onboarding'
+}           , 2000)
       }
     } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Une erreur est survenue')
