@@ -14,6 +14,7 @@ type TeamMember = {
   user_id: string
   first_name?: string
   last_name?: string
+  email?: string
 }
 
 type VotingSession = {
@@ -124,12 +125,25 @@ setSession({
 
       const userIds = participantsData?.map(p => p.user_id) || []
 
-      const { data: teamMembersData } = await supabase
-        .from('team_members')
-        .select('id, user_id')
-        .in('user_id', userIds)
+// Au lieu de charger les team_members, charge directement les user_id des participants
+const participantUserIds = participantsData?.map(p => p.user_id) || []
 
-      setMembers(teamMembersData || [])
+// Charger les profiles pour afficher les noms
+const { data: profilesData } = await supabase
+  .from('profiles')
+  .select('id, first_name, last_name, email')
+  .in('id', participantUserIds)
+
+// Transformer en format compatible
+const membersWithNames = profilesData?.map(profile => ({
+  id: profile.id,
+  user_id: profile.id,
+  first_name: profile.first_name,
+  last_name: profile.last_name,
+  email: profile.email
+})) || []
+
+setMembers(membersWithNames)
 
     } catch (err) {
       console.error('Erreur:', err)
@@ -328,18 +342,20 @@ const handleSubmit = async () => {
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Sélectionnez le meilleur joueur *
                 </label>
-                <select
-                  value={topPlayerId}
-                  onChange={(e) => setTopPlayerId(e.target.value)}
-                  className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
-                >
-                  <option value="">Choisir un joueur...</option>
-                  {members.map((member) => (
-                    <option key={member.id} value={member.user_id}>
-                      Joueur #{member.user_id.substring(0, 8)}
-                    </option>
-                  ))}
-                </select>
+<select
+  value={topPlayerId}
+  onChange={(e) => setTopPlayerId(e.target.value)}
+  className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
+>
+  <option value="">Choisir un joueur...</option>
+  {members.map((member) => (
+    <option key={member.id} value={member.user_id}>
+      {member.first_name && member.last_name
+        ? `${member.first_name} ${member.last_name}`
+        : member.email || `Joueur #${member.user_id.substring(0, 8)}`}
+    </option>
+  ))}
+</select>
               </div>
 
               <div>
