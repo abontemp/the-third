@@ -298,199 +298,191 @@ if (loading) {
 
   const isManager = selectedTeam && (selectedTeam.userRole === 'creator' || selectedTeam.userRole === 'manager')
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-orange-500 rounded-lg flex items-center justify-center font-bold text-white">
-                T3
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-white">{selectedTeam?.name}</h1>
-                <p className="text-xs text-gray-400">{selectedTeam?.sport}</p>
-              </div>
+return (
+  <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+    <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-orange-500 rounded-lg flex items-center justify-center font-bold text-white">
+              T3
             </div>
-<div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-  {member.first_name 
-    ? member.first_name[0].toUpperCase() 
-    : member.user_id.substring(0, 2).toUpperCase()}
-</div>
-<div>
-  <p className="font-semibold text-white">
-    {member.first_name && member.last_name 
-      ? `${member.first_name} ${member.last_name}`
-      : member.email || `Membre #${member.user_id.substring(0, 8)}`}
-  </p>
-  <p className="text-sm text-gray-400">
-    Rejoint le {new Date(member.joined_at).toLocaleDateString()}
-  </p>
-</div>
-            <div className="flex items-center gap-4">
-              {teams.length > 1 && (
-                <button
-                  onClick={() => setSelectedTeam(null)}
-                  className="text-sm text-gray-400 hover:text-white transition"
-                >
-                  Changer d&apos;équipe
-                </button>
-              )}
+            <div>
+              <h1 className="text-xl font-bold text-white">{selectedTeam?.name}</h1>
+              <p className="text-xs text-gray-400">{selectedTeam?.sport}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {teams.length > 1 && (
               <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 text-gray-400 hover:text-white transition"
+                onClick={() => setSelectedTeam(null)}
+                className="text-sm text-gray-400 hover:text-white transition"
               >
-                <LogOut size={20} />
-                <span className="hidden sm:inline">Déconnexion</span>
+                Changer d&apos;équipe
               </button>
-            </div>
+            )}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 text-gray-400 hover:text-white transition"
+            >
+              <LogOut size={20} />
+              <span className="hidden sm:inline">Déconnexion</span>
+            </button>
           </div>
         </div>
-      </header>
+      </div>
+    </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-2">
-              <Users className="text-blue-400" size={24} />
-              <span className="text-3xl font-bold text-white">{members.length}</span>
-            </div>
-            <p className="text-gray-400 text-sm">Membres</p>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-2">
+            <Users className="text-blue-400" size={24} />
+            <span className="text-3xl font-bold text-white">{members.length}</span>
           </div>
-
-          <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-2">
-              <Calendar className="text-orange-400" size={24} />
-              <span className="text-3xl font-bold text-white">0</span>
-            </div>
-            <p className="text-gray-400 text-sm">Matchs</p>
-          </div>
-
-          <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-2">
-              <Plus className="text-purple-400" size={24} />
-              <span className="text-3xl font-bold text-white">0</span>
-            </div>
-            <p className="text-gray-400 text-sm">Saisons</p>
-          </div>
+          <p className="text-gray-400 text-sm">Membres</p>
         </div>
 
-{/* Votes en cours */}
-        {votingSessions.length > 0 && (
-          <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-6 mb-8">
-            <h2 className="text-2xl font-bold text-white mb-4">Votes en cours</h2>
-            <div className="space-y-3">
-              {votingSessions.map((session) => (
-                <div 
-                  key={session.id}
-                  className="bg-slate-800/50 border border-white/10 rounded-lg p-4"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-white mb-1">
-                        {session.match.opponent}
-                      </h3>
-                      <p className="text-sm text-gray-400 mb-3">
-                        {new Date(session.match.match_date).toLocaleDateString('fr-FR', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </p>
+        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-2">
+            <Calendar className="text-orange-400" size={24} />
+            <span className="text-3xl font-bold text-white">0</span>
+          </div>
+          <p className="text-gray-400 text-sm">Matchs</p>
+        </div>
 
-                      {session.is_participant ? (
-                        session.has_voted ? (
-                          <div className="flex items-center gap-2 text-green-400">
-                            <CheckCircle size={18} />
-                            <span className="text-sm font-medium">Vous avez voté</span>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => router.push(`/vote/${session.id}`)}
-                            className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
-                          >
-                            <Vote size={18} />
-                            Voter maintenant
-                          </button>
-                        )
+        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-2">
+            <Plus className="text-purple-400" size={24} />
+            <span className="text-3xl font-bold text-white">0</span>
+          </div>
+          <p className="text-gray-400 text-sm">Saisons</p>
+        </div>
+      </div>
+
+      {/* Votes en cours */}
+      {votingSessions.length > 0 && (
+        <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-6 mb-8">
+          <h2 className="text-2xl font-bold text-white mb-4">Votes en cours</h2>
+          <div className="space-y-3">
+            {votingSessions.map((session) => (
+              <div 
+                key={session.id}
+                className="bg-slate-800/50 border border-white/10 rounded-lg p-4"
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-white mb-1">
+                      {session.match.opponent}
+                    </h3>
+                    <p className="text-sm text-gray-400 mb-3">
+                      {new Date(session.match.match_date).toLocaleDateString('fr-FR', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </p>
+
+                    {session.is_participant ? (
+                      session.has_voted ? (
+                        <div className="flex items-center gap-2 text-green-400">
+                          <CheckCircle size={18} />
+                          <span className="text-sm font-medium">Vous avez voté</span>
+                        </div>
                       ) : (
                         <button
-                          onClick={() => handleJoinVote(session.id)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
+                          onClick={() => router.push(`/vote/${session.id}`)}
+                          className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
                         >
-                          <Plus size={18} />
-                          Rejoindre ce vote
+                          <Vote size={18} />
+                          Voter maintenant
                         </button>
-                      )}
-                    </div>
-
-                    {isManager && (
+                      )
+                    ) : (
                       <button
-                        onClick={() => router.push(`/vote/${session.id}/manage`)}
-                        className="ml-4 text-gray-400 hover:text-white transition text-sm"
+                        onClick={() => handleJoinVote(session.id)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
                       >
-                        Gérer →
+                        <Plus size={18} />
+                        Rejoindre ce vote
                       </button>
                     )}
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6 mb-8">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-white">Membres de l&apos;équipe</h2>
-          </div>
-
-          <div className="space-y-3">
-            {members.map((member) => (
-              <div key={member.id} className="bg-slate-700/30 border border-white/10 rounded-lg p-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                    {member.user_id.substring(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-white">Membre #{member.user_id.substring(0, 8)}</p>
-                    <p className="text-sm text-gray-400">
-                      Rejoint le {new Date(member.joined_at).toLocaleDateString()}
-                    </p>
-                  </div>
+                  {isManager && (
+                    <button
+                      onClick={() => router.push(`/vote/${session.id}/manage`)}
+                      className="ml-4 text-gray-400 hover:text-white transition text-sm"
+                    >
+                      Gérer →
+                    </button>
+                  )}
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  member.role === 'creator' ? 'bg-yellow-500/20 text-yellow-300' :
-                  member.role === 'manager' ? 'bg-purple-500/20 text-purple-300' :
-                  'bg-blue-500/20 text-blue-300'
-                }`}>
-                  {member.role === 'creator' ? 'Créateur' :
-                   member.role === 'manager' ? 'Manager' : 'Membre'}
-                </span>
               </div>
             ))}
           </div>
         </div>
+      )}
 
-        {isManager && (
-          <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-6">
-            <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <button 
-  onClick={() => router.push('/dashboard/matches/create')}
-  className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
->
-  <Plus size={20} />
-  Créer un match
-</button>
-              <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2">
-                <Calendar size={20} />
-                Historique
-              </button>
+      <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6 mb-8">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-white">Membres de l&apos;équipe</h2>
+        </div>
+
+        <div className="space-y-3">
+          {members.map((member) => (
+            <div key={member.id} className="bg-slate-700/30 border border-white/10 rounded-lg p-4 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+                  {member.first_name 
+                    ? member.first_name[0].toUpperCase() 
+                    : member.user_id.substring(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-semibold text-white">
+                    {member.first_name && member.last_name 
+                      ? `${member.first_name} ${member.last_name}`
+                      : member.email || `Membre #${member.user_id.substring(0, 8)}`}
+                  </p>
+                  <p className="text-sm text-gray-400">
+                    Rejoint le {new Date(member.joined_at).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                member.role === 'creator' ? 'bg-yellow-500/20 text-yellow-300' :
+                member.role === 'manager' ? 'bg-purple-500/20 text-purple-300' :
+                'bg-blue-500/20 text-blue-300'
+              }`}>
+                {member.role === 'creator' ? 'Créateur' :
+                 member.role === 'manager' ? 'Manager' : 'Membre'}
+              </span>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
+
+      {isManager && (
+        <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-6">
+          <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button 
+              onClick={() => router.push('/dashboard/matches/create')}
+              className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+            >
+              <Plus size={20} />
+              Créer un match
+            </button>
+            <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2">
+              <Calendar size={20} />
+              Historique
+            </button>
+          </div>
+        </div>
+      )}
     </div>
-  )
+  </div>
+)
 }
