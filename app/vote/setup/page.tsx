@@ -70,7 +70,7 @@ export default function VoteSetupPage() {
         return
       }
 
-      const { data: teamData } = await supabase
+const { data: _teamData } = await supabase
         .from('teams')
         .select('*')
         .eq('id', membership.team_id)

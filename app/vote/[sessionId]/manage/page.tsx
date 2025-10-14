@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { 
-  ArrowLeft, Users, CheckCircle, Clock, 
+  ArrowLeft, CheckCircle, Clock, 
   Loader, AlertCircle, Play, XCircle
 } from 'lucide-react'
 
@@ -65,6 +65,7 @@ export default function ManageVotePage() {
         .select(`
           id,
           status,
+          match_id,
           matches (
             opponent,
             match_date,
