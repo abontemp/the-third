@@ -7,6 +7,10 @@ import {
   ArrowLeft, CheckCircle, Clock, 
   Loader, AlertCircle, Play, XCircle
 } from 'lucide-react'
+import { 
+  ArrowLeft, CheckCircle, Clock, 
+  Loader, AlertCircle, Play, XCircle, ThumbsDown, Trophy
+} from 'lucide-react'
 
 type Participant = {
   id: string
@@ -41,6 +45,19 @@ export default function ManageVotePage() {
   useEffect(() => {
     loadSessionData()
     
+// Charger les noms des lecteurs si la session est en lecture
+if (sessionData.status === 'reading') {
+  const readerIds = [sessionData.flop_reader_id, sessionData.top_reader_id].filter(Boolean)
+  
+  const { data: readersProfiles } = await supabase
+    .from('profiles')
+    .select('id, first_name, last_name, email')
+    .in('id', readerIds)
+
+  // Tu peux stocker ça dans un state pour l'afficher
+  console.log('Lecteurs:', readersProfiles)
+}
+
     // Rafraîchir toutes les 5 secondes pour voir les votes en temps réel
     const interval = setInterval(() => {
       loadSessionData()
@@ -315,46 +332,96 @@ export default function ManageVotePage() {
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-2xl p-8">
-          <h2 className="text-2xl font-bold text-white mb-4">Actions</h2>
-          
-          <div className="space-y-4">
-            <div className="bg-slate-800/50 rounded-lg p-4 border border-white/10">
-              <p className="text-gray-300 text-sm mb-2">
-                ℹ️ Lorsque vous clôturez le vote, le système sélectionnera automatiquement 2 lecteurs parmi ceux qui ont voté :
-              </p>
-              <ul className="text-gray-400 text-sm list-disc list-inside space-y-1">
-                <li>1 lecteur pour les votes FLOP</li>
-                <li>1 lecteur pour les votes TOP</li>
-              </ul>
+{/* Actions */}
+<div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-2xl p-8">
+  <h2 className="text-2xl font-bold text-white mb-4">Actions</h2>
+  
+  {session?.status === 'reading' ? (
+    // Afficher les lecteurs désignés
+    <div className="space-y-4">
+      <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-6">
+        <h3 className="text-xl font-bold text-white mb-4">🎉 Vote clôturé !</h3>
+        <p className="text-gray-300 mb-4">Les lecteurs ont été désignés :</p>
+        
+        <div className="space-y-3">
+          <div className="bg-slate-800/50 rounded-lg p-4 border border-orange-500/30">
+            <div className="flex items-center gap-3">
+              <ThumbsDown className="text-orange-400" size={24} />
+              <div>
+                <p className="text-sm text-gray-400">Lecteur des votes FLOP</p>
+                <p className="text-white font-semibold">
+                  {/* On affichera le nom du lecteur */}
+                  Lecteur FLOP
+                </p>
+              </div>
             </div>
+          </div>
 
-            <button
-              onClick={handleCloseSession}
-              disabled={closing || votedCount < 2}
-              className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {closing ? (
-                <>
-                  <Loader className="animate-spin" size={20} />
-                  <span>Clôture en cours...</span>
-                </>
-              ) : (
-                <>
-                  <Play size={20} />
-                  <span>Clôturer et lancer la lecture</span>
-                </>
-              )}
-            </button>
-
-            {votedCount < 2 && (
-              <p className="text-center text-sm text-orange-400">
-                Attendez au moins 2 votes pour clôturer la session
-              </p>
-            )}
+          <div className="bg-slate-800/50 rounded-lg p-4 border border-blue-500/30">
+            <div className="flex items-center gap-3">
+              <Trophy className="text-blue-400" size={24} />
+              <div>
+                <p className="text-sm text-gray-400">Lecteur des votes TOP</p>
+                <p className="text-white font-semibold">
+                  {/* On affichera le nom du lecteur */}
+                  Lecteur TOP
+                </p>
+              </div>
+            </div>
           </div>
         </div>
+
+        <p className="text-gray-400 text-sm mt-4">
+          ℹ️ Prévenez ces personnes qu'elles doivent commencer la lecture depuis leur dashboard.
+        </p>
+      </div>
+
+      <button
+        onClick={() => router.push('/dashboard')}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-lg font-semibold transition"
+      >
+        Retour au dashboard
+      </button>
+    </div>
+  ) : (
+    // Bouton de clôture (code existant)
+    <div className="space-y-4">
+      <div className="bg-slate-800/50 rounded-lg p-4 border border-white/10">
+        <p className="text-gray-300 text-sm mb-2">
+          ℹ️ Lorsque vous clôturez le vote, le système sélectionnera automatiquement 2 lecteurs parmi ceux qui ont voté :
+        </p>
+        <ul className="text-gray-400 text-sm list-disc list-inside space-y-1">
+          <li>1 lecteur pour les votes FLOP</li>
+          <li>1 lecteur pour les votes TOP</li>
+        </ul>
+      </div>
+
+      <button
+        onClick={handleCloseSession}
+        disabled={closing || votedCount < 2}
+        className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+      >
+        {closing ? (
+          <>
+            <Loader className="animate-spin" size={20} />
+            <span>Clôture en cours...</span>
+          </>
+        ) : (
+          <>
+            <Play size={20} />
+            <span>Clôturer et désigner les lecteurs</span>
+          </>
+        )}
+      </button>
+
+      {votedCount < 2 && (
+        <p className="text-center text-sm text-orange-400">
+          Attendez au moins 2 votes pour clôturer la session
+        </p>
+      )}
+    </div>
+  )}
+</div>
       </div>
     </div>
   )

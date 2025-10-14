@@ -8,6 +8,8 @@ import { useRouter } from 'next/navigation'
 type VotingSession = {
   id: string
   status: string
+  flop_reader_id?: string
+  top_reader_id?: string
   match: {
     opponent: string
     match_date: string
@@ -201,19 +203,21 @@ email: (member.profiles as { email?: string })?.email
       const matchIds = matchesData?.map(m => m.id) || []
 
       if (matchIds.length > 0) {
-        const { data: sessionsData } = await supabase
-          .from('voting_sessions')
-          .select(`
-            id,
-            status,
-            match_id,
-            matches (
-              opponent,
-              match_date
-            )
-          `)
-          .in('match_id', matchIds)
-          .eq('status', 'open')
+const { data: sessionsData } = await supabase
+  .from('voting_sessions')
+  .select(`
+    id,
+    status,
+    flop_reader_id,
+    top_reader_id,
+    match_id,
+    matches (
+      opponent,
+      match_date
+    )
+  `)
+  .in('match_id', matchIds)
+  .in('status', ['open', 'reading']) // Inclure les sessions en lecture
 
         if (sessionsData && sessionsData.length > 0) {
           const sessionsWithStatus = await Promise.all(
@@ -413,30 +417,39 @@ return (
                       })}
                     </p>
 
-                    {session.is_participant ? (
-                      session.has_voted ? (
-                        <div className="flex items-center gap-2 text-green-400">
-                          <CheckCircle size={18} />
-                          <span className="text-sm font-medium">Vous avez voté</span>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => router.push(`/vote/${session.id}`)}
-                          className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
-                        >
-                          <Vote size={18} />
-                          Voter maintenant
-                        </button>
-                      )
-                    ) : (
-                      <button
-                        onClick={() => handleJoinVote(session.id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
-                      >
-                        <Plus size={18} />
-                        Rejoindre ce vote
-                      </button>
-                    )}
+{/* Vérifier si l'utilisateur est lecteur désigné */}
+{session.status === 'reading' && (session.flop_reader_id === currentUser.id || session.top_reader_id === currentUser.id) ? (
+  <button
+    onClick={() => router.push(`/vote/${session.id}/reading`)}
+    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 animate-pulse"
+  >
+    <Trophy size={18} />
+    🎤 Commencer la lecture des votes
+  </button>
+) : session.is_participant ? (
+  session.has_voted ? (
+    <div className="flex items-center gap-2 text-green-400">
+      <CheckCircle size={18} />
+      <span className="text-sm font-medium">Vous avez voté</span>
+    </div>
+  ) : (
+    <button
+      onClick={() => router.push(`/vote/${session.id}`)}
+      className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
+    >
+      <Vote size={18} />
+      Voter maintenant
+    </button>
+  )
+) : (
+  <button
+    onClick={() => handleJoinVote(session.id)}
+    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
+  >
+    <Plus size={18} />
+    Rejoindre ce vote
+  </button>
+)}
                   </div>
 
                   {isManager && (
