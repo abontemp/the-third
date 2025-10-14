@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Users, Calendar, Plus, LogOut, Loader } from 'lucide-react'
+import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
@@ -11,6 +11,7 @@ type VotingSession = {
   match: {
     opponent: string
     match_date: string
+  }
   has_voted: boolean
   is_participant: boolean
 }
