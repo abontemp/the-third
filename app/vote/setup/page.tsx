@@ -70,18 +70,23 @@ export default function VoteSetupPage() {
         return
       }
 
-const { data: _teamData } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('id', membership.team_id)
-        .single()
+const { data: teamData } = await supabase
+  .from('teams')
+  .select('*')
+  .eq('id', membership.team_id)
+  .single()
 
+setTeam(teamData)
 
-      // Charger les membres
-      const { data: membersData } = await supabase
-        .from('team_members')
-        .select('id, user_id, role, email')
-        .eq('team_id', membership.team_id)
+// Charger TOUS les membres de l'équipe (pas seulement les participants)
+const { data: membersData } = await supabase
+  .from('team_members')
+  .select('id, user_id, role')
+  .eq('team_id', membership.team_id)
+
+console.log('Membres chargés:', membersData) // Pour debug
+
+setMembers(membersData || [])
 
       setMembers(membersData || [])
 

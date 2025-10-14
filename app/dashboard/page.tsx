@@ -265,12 +265,12 @@ export default function DashboardPage() {
             <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button 
-                onClick={() => router.push('/vote/setup')}
-                className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
-              >
-                <Plus size={20} />
-                Créer un match & Vote
-              </button>
+  onClick={() => router.push('/dashboard/matches/create')}
+  className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+>
+  <Plus size={20} />
+  Créer un match
+</button>
               <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2">
                 <Calendar size={20} />
                 Historique
