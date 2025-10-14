@@ -179,43 +179,50 @@ setSession({
     }, 0)
   }
 
-  const handleSubmit = async () => {
-    if (!topPlayerId || !flopPlayerId) {
-      setError('Veuillez sélectionner un Top et un Flop')
-      return
+const handleSubmit = async () => {
+  if (!topPlayerId || !flopPlayerId) {
+    setError('Veuillez sélectionner un Top et un Flop')
+    return
+  }
+
+  if (!topJustification.trim() || !flopJustification.trim()) {
+    setError('Les justifications sont obligatoires')
+    return
+  }
+
+  setSubmitting(true)
+  setError('')
+
+  try {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) throw new Error('Non connecté')
+
+    console.log('Données du vote:', {
+      session_id: sessionId,
+      voter_id: user.id,
+      top_player_id: topPlayerId,
+      flop_player_id: flopPlayerId
+    })
+
+    const { error: voteError } = await supabase
+      .from('votes')
+      .insert([{
+        session_id: sessionId,
+        voter_id: user.id,
+        top_player_id: topPlayerId,
+        top_justification: topJustification,
+        flop_player_id: flopPlayerId,
+        flop_justification: flopJustification
+      }])
+
+    if (voteError) {
+      console.error('Erreur Supabase:', voteError)
+      throw voteError
     }
 
-    if (topPlayerId === flopPlayerId) {
-      setError('Le Top et le Flop doivent être différents')
-      return
-    }
-
-    if (!topJustification.trim() || !flopJustification.trim()) {
-      setError('Les justifications sont obligatoires')
-      return
-    }
-
-    setSubmitting(true)
-    setError('')
-
-    try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) throw new Error('Non connecté')
-
-      const { error: voteError } = await supabase
-        .from('votes')
-        .insert([{
-          session_id: sessionId,
-          voter_id: user.id,
-          top_player_id: topPlayerId,
-          top_justification: topJustification,
-          flop_player_id: flopPlayerId,
-          flop_justification: flopJustification
-        }])
-
-      if (voteError) throw voteError
+    // ... reste du code
 
       const { error: participantError } = await supabase
         .from('session_participants')

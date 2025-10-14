@@ -30,12 +30,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [teams, setTeams] = useState<Team[]>([])
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
-  const [members, setMembers] = useState<Array<{
-    id: string
-    role: string
-    joined_at: string
-    user_id: string
-  }>>([])
+ const [members, setMembers] = useState<Array<{
+  id: string
+  role: string
+  joined_at: string
+  user_id: string
+  first_name?: string
+  last_name?: string
+  email?: string
+}>>([])
   const [votingSessions, setVotingSessions] = useState<VotingSession[]>([])
 
 
@@ -130,16 +133,37 @@ const handleJoinVote = async (sessionId: string) => {
   }
 }
 
-  const loadTeamDetails = async (teamId: string, team: Team) => {
-    setSelectedTeam(team)
-    
-    const supabase = createClient()
-    const { data: membersData } = await supabase
-      .from('team_members')
-      .select('id, role, joined_at, user_id')
-      .eq('team_id', teamId)
+const loadTeamDetails = async (teamId: string, team: Team) => {
+  setSelectedTeam(team)
+  
+  const supabase = createClient()
+  const { data: membersData } = await supabase
+    .from('team_members')
+    .select(`
+      id, 
+      role, 
+      joined_at, 
+      user_id,
+      profiles (
+        first_name,
+        last_name,
+        email
+      )
+    `)
+    .eq('team_id', teamId)
 
-    setMembers(membersData || [])
+  // Transformer les données pour avoir un format plat
+  const formattedMembers = membersData?.map(member => ({
+    id: member.id,
+    role: member.role,
+    joined_at: member.joined_at,
+    user_id: member.user_id,
+    first_name: (member.profiles as any)?.first_name,
+    last_name: (member.profiles as any)?.last_name,
+    email: (member.profiles as any)?.email
+  })) || []
+
+  setMembers(formattedMembers)
     // Charger les votes en cours pour cette équipe
   const { data: { user: currentUser } } = await supabase.auth.getUser()
   
@@ -288,7 +312,21 @@ if (loading) {
                 <p className="text-xs text-gray-400">{selectedTeam?.sport}</p>
               </div>
             </div>
-
+<div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+  {member.first_name 
+    ? member.first_name[0].toUpperCase() 
+    : member.user_id.substring(0, 2).toUpperCase()}
+</div>
+<div>
+  <p className="font-semibold text-white">
+    {member.first_name && member.last_name 
+      ? `${member.first_name} ${member.last_name}`
+      : member.email || `Membre #${member.user_id.substring(0, 8)}`}
+  </p>
+  <p className="text-sm text-gray-400">
+    Rejoint le {new Date(member.joined_at).toLocaleDateString()}
+  </p>
+</div>
             <div className="flex items-center gap-4">
               {teams.length > 1 && (
                 <button
