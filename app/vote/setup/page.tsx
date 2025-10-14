@@ -212,8 +212,8 @@ export default function VoteSetupPage() {
       setSuccess("Match et vote créés avec succès ! Redirection...")
       
       setTimeout(() => {
-        router.push(`/vote/${session.id}`)
-      }, 1500)
+  router.push(`/vote/${session.id}/manage`)
+}, 1500)
 
 } catch (err: unknown) {
     console.error('Erreur:', err)
