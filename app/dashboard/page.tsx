@@ -207,21 +207,20 @@ const handleJoinVote = async (sessionId: string) => {
     }
   }
 }
-  }
 
-  const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/')
-  }
+const handleLogout = async () => {
+  const supabase = createClient()
+  await supabase.auth.signOut()
+  router.push('/')
+}
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
-        <Loader className="text-white animate-spin" size={48} />
-      </div>
-    )
-  }
+if (loading) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+      <Loader className="text-white animate-spin" size={48} />
+    </div>
+  )
+}
 
   // Sélection d'équipe si plusieurs
   if (!selectedTeam && teams.length > 1) {
