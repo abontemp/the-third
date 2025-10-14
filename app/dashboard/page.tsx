@@ -158,9 +158,9 @@ const loadTeamDetails = async (teamId: string, team: Team) => {
     role: member.role,
     joined_at: member.joined_at,
     user_id: member.user_id,
-    first_name: (member.profiles as any)?.first_name,
-    last_name: (member.profiles as any)?.last_name,
-    email: (member.profiles as any)?.email
+first_name: (member.profiles as { first_name?: string })?.first_name,
+last_name: (member.profiles as { last_name?: string })?.last_name,
+email: (member.profiles as { email?: string })?.email
   })) || []
 
   setMembers(formattedMembers)
