@@ -9,7 +9,6 @@ type TeamMember = {
   id: string
   user_id: string
   role: string
-  email: string
 }
 
 type Season = {
@@ -70,7 +69,7 @@ export default function VoteSetupPage() {
         return
       }
 
-const { data: teamData } = await supabase
+const { data: _teamData } = await supabase
   .from('teams')
   .select('*')
   .eq('id', membership.team_id)
@@ -83,8 +82,6 @@ const { data: membersData } = await supabase
   .eq('team_id', membership.team_id)
 
 console.log('Membres chargés:', membersData) // Pour debug
-
-setMembers(membersData || [])
 
       setMembers(membersData || [])
 
