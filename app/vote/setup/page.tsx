@@ -76,8 +76,6 @@ const { data: teamData } = await supabase
   .eq('id', membership.team_id)
   .single()
 
-setTeam(teamData)
-
 // Charger TOUS les membres de l'équipe (pas seulement les participants)
 const { data: membersData } = await supabase
   .from('team_members')

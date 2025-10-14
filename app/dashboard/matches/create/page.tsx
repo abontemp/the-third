@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Calendar, Send, AlertCircle, CheckCircle, Loader } from 'lucide-react'
+import { ArrowLeft, Send, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 
 type Season = {
   id: string
@@ -18,7 +18,6 @@ export default function CreateMatchPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   
-  const [team, setTeam] = useState<{ id: string; name: string } | null>(null)
   const [seasons, setSeasons] = useState<Season[]>([])
   
   const [formData, setFormData] = useState({
@@ -66,8 +65,6 @@ export default function CreateMatchPage() {
         .select('*')
         .eq('id', membership.team_id)
         .single()
-
-      setTeam(teamData)
 
       // Charger les saisons actives
       const { data: seasonsData } = await supabase
