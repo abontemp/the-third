@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { 
-  ArrowLeft, Users, CheckCircle, Clock, 
+  ArrowLeft, CheckCircle, Clock, 
   Loader, AlertCircle, Play, XCircle, ThumbsDown, Trophy
 } from 'lucide-react'
 
@@ -368,7 +368,7 @@ if (sessionData.status === 'reading') {
         </div>
 
         <p className="text-gray-400 text-sm mt-4">
-          ℹ️ Prévenez ces personnes qu'elles doivent commencer la lecture depuis leur dashboard.
+ℹ️ Prévenez ces personnes qu&apos;elles doivent commencer la lecture depuis leur dashboard.
         </p>
       </div>
 

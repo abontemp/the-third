@@ -43,7 +43,6 @@ export default function VotePage() {
 
   const [topPlayerId, setTopPlayerId] = useState('')
   const [topJustification, setTopJustification] = useState('')
-  const [flopPlayerId, setFlopPlayerId] = useState('')
   const [flopJustification, setFlopJustification] = useState('')
 
   const [topEditorFocus, setTopEditorFocus] = useState(false)
