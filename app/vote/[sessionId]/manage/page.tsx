@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { 
-  ArrowLeft, CheckCircle, Clock, 
-  Loader, AlertCircle, Play, XCircle
+  ArrowLeft, Users, CheckCircle, Clock, 
+  Loader, AlertCircle, Play, XCircle, ThumbsDown, Trophy
 } from 'lucide-react'
 
 type Participant = {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trophy } from 'lucide-react'
 
 type VotingSession = {
   id: string

@@ -199,7 +199,7 @@ const handleNextVote = () => {
     ? currentVote.flop_justification 
     : currentVote.top_justification
 
-  const voterName = currentVote.voter.first_name && currentVote.voter.last_name
+  // const voterName = currentVote.voter.first_name && currentVote.voter.last_name
     ? `${currentVote.voter.first_name} ${currentVote.voter.last_name}`
     : currentVote.voter.email || 'Anonyme'
 

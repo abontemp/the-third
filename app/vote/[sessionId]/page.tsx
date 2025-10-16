@@ -123,7 +123,7 @@ setSession({
         .select('user_id')
         .eq('session_id', sessionId)
 
-      const userIds = participantsData?.map(p => p.user_id) || []
+      //const userIds = participantsData?.map(p => p.user_id) || []
 
 // Au lieu de charger les team_members, charge directement les user_id des participants
 const participantUserIds = participantsData?.map(p => p.user_id) || []
@@ -415,18 +415,20 @@ const handleSubmit = async () => {
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Sélectionnez le joueur à améliorer *
                 </label>
-                <select
-                  value={flopPlayerId}
-                  onChange={(e) => setFlopPlayerId(e.target.value)}
-                  className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
-                >
-                  <option value="">Choisir un joueur...</option>
-                  {members.map((member) => (
-                    <option key={member.id} value={member.user_id}>
-                      Joueur #{member.user_id.substring(0, 8)}
-                    </option>
-                  ))}
-                </select>
+                <<select
+  value={topPlayerId}
+  onChange={(e) => setTopPlayerId(e.target.value)}
+  className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
+>
+  <option value="">Choisir un joueur...</option>
+  {members.map((member) => (
+    <option key={member.id} value={member.user_id}>
+      {member.first_name && member.last_name
+        ? `${member.first_name} ${member.last_name}`
+        : member.email || `Joueur #${member.user_id.substring(0, 8)}`}
+    </option>
+  ))}
+</select>
               </div>
 
               <div>
