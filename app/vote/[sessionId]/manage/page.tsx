@@ -7,10 +7,6 @@ import {
   ArrowLeft, CheckCircle, Clock, 
   Loader, AlertCircle, Play, XCircle
 } from 'lucide-react'
-import { 
-  ArrowLeft, CheckCircle, Clock, 
-  Loader, AlertCircle, Play, XCircle, ThumbsDown, Trophy
-} from 'lucide-react'
 
 type Participant = {
   id: string
