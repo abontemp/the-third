@@ -4,6 +4,11 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trophy } from 'lucide-react'
+'use client'
+import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'  // AJOUTE CETTE LIGNE
+import { User } from '@supabase/supabase-js'
 
 type VotingSession = {
   id: string
@@ -29,6 +34,7 @@ type Team = {
 
 export default function DashboardPage() {
   const router = useRouter()
+    const supabase = createClientComponentClient()  // AJOUTE CETTE LIGNE
   const [loading, setLoading] = useState(true)
   const [teams, setTeams] = useState<Team[]>([])
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
