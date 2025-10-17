@@ -4,7 +4,6 @@ import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trophy } from
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'  // AJOUTE CETTE LIGNE
-import { User } from '@supabase/supabase-js'
 
 type VotingSession = {
   id: string
