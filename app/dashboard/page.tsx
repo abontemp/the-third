@@ -43,6 +43,7 @@ export default function DashboardPage() {
 }>>([])
   const [votingSessions, setVotingSessions] = useState<VotingSession[]>([])
   const [currentUserName, setCurrentUserName] = useState('')
+  const [user, setUser] = useState<any>(null) // AJOUTE CETTE LIGNE
 
 
 
@@ -50,15 +51,17 @@ export default function DashboardPage() {
     loadDashboard()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadDashboard = async () => {
-    try {
-      const supabase = createClient()
-      
-      const { data: { user: currentUser } } = await supabase.auth.getUser()
-      if (!currentUser) {
-        router.push('/login')
-        return
-      }
+const loadDashboard = async () => {
+  try {
+    setLoading(true)
+    
+    // AJOUTE CES LIGNES AU DÉBUT
+    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    if (!currentUser) {
+      router.push('/login')
+      return
+    }
+    setUser(currentUser)
 
       const { data: profileData } = await supabase
       .from('profiles')
