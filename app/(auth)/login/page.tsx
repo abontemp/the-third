@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'  // AJOUTE CETTE LIGNE
 import Link from 'next/link'
 import { Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+// import { useState, useEffect } from 'react'
+
 
 
 export default function LoginPage() {
@@ -44,6 +46,21 @@ export default function LoginPage() {
     if (!validateForm()) return
     setLoading(true)
     setError('')
+
+  // AJOUTEZ CE useEffect
+  useEffect(() => {
+    // Nettoyer tous les cookies Supabase au chargement de la page
+    const cleanSupabaseCookies = () => {
+      const cookies = document.cookie.split(';')
+      cookies.forEach(cookie => {
+        const [name] = cookie.split('=')
+        if (name.trim().includes('supabase') || name.trim().includes('sb-')) {
+          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`
+        }
+      })
+    }
+    cleanSupabaseCookies()
+  }, [])
 
     try {
       const supabase = createClient()
