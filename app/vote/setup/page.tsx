@@ -69,11 +69,6 @@ export default function VoteSetupPage() {
         return
       }
 
-  .from('teams')
-  .select('*')
-  .eq('id', membership.team_id)
-  .single()
-
 // Charger TOUS les membres de l'équipe (pas seulement les participants)
 const { data: membersData } = await supabase
   .from('team_members')

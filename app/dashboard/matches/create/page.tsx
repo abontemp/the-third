@@ -60,11 +60,6 @@ export default function CreateMatchPage() {
         return
       }
 
-        .from('teams')
-        .select('*')
-        .eq('id', membership.team_id)
-        .single()
-
       // Charger les saisons actives
       const { data: seasonsData } = await supabase
         .from('seasons')
