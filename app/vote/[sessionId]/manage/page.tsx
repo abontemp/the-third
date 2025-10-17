@@ -39,34 +39,42 @@ export default function ManageVotePage() {
   const [session, setSession] = useState<VotingSession | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
   const [isManager, setIsManager] = useState(false)
+useEffect(() => {
+  loadSessionData()
 
-  useEffect(() => {
+  // Rafraîchir toutes les 5 secondes pour voir les votes en temps réel
+  const interval = setInterval(() => {
     loadSessionData()
-    
+  }, 5000)
+
+  return () => clearInterval(interval)
+}, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+
 // Charger les noms des lecteurs si la session est en lecture
 useEffect(() => {
   const loadReaders = async () => {
     if (session?.status === 'reading') {
+      const supabase = createClient()
       const readerIds = [session.flop_reader_id, session.top_reader_id].filter(Boolean)
       
-      const { data: readersProfiles } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, email')
-        .in('id', readerIds)
+      if (readerIds.length > 0) {
+        const { data: readersProfiles } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email')
+          .in('id', readerIds)
+        
+        // Tu peux stocker ça dans un state pour l'afficher
+        console.log('Lecteurs:', readersProfiles)
+      }
+    }
+  }
+  
+  if (session) {
+    loadReaders()
+  }
+}, [session])
 
-  // Tu peux stocker ça dans un state pour l'afficher
-  console.log('Lecteurs:', readersProfiles)
-}
-
-    // Rafraîchir toutes les 5 secondes pour voir les votes en temps réel
-    const interval = setInterval(() => {
-      loadSessionData()
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadSessionData = async () => {
+const loadSessionData = async () => {
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
