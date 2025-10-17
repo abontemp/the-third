@@ -42,7 +42,7 @@ export default function ManageVotePage() {
     loadSessionData()
     
 // Charger les noms des lecteurs si la session est en lecture
-if (session.status === 'reading') {
+if (session?.status === 'reading') {
   const readerIds = [session.flop_reader_id, session.top_reader_id].filter(Boolean)
   
   const { data: readersProfiles } = await supabase
