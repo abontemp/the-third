@@ -17,12 +17,12 @@ type Participant = {
 type VotingSession = {
   id: string
   status: string
+  flop_reader_id?: string    // DÉPLACE ICI (en dehors de match)
+  top_reader_id?: string     // DÉPLACE ICI (en dehors de match)
   match: {
     opponent: string
     match_date: string
     location?: string
-    flop_reader_id?: string  // AJOUTE CETTE LIGNE
-  top_reader_id?: string   // AJOUTE CETTE LIGNE
   }
 }
 
