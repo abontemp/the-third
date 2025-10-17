@@ -21,6 +21,8 @@ type VotingSession = {
     opponent: string
     match_date: string
     location?: string
+    flop_reader_id?: string  // AJOUTE CETTE LIGNE
+  top_reader_id?: string   // AJOUTE CETTE LIGNE
   }
 }
 

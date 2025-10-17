@@ -69,7 +69,6 @@ export default function VoteSetupPage() {
         return
       }
 
-const { data: _teamData } = await supabase
   .from('teams')
   .select('*')
   .eq('id', membership.team_id)

@@ -34,7 +34,6 @@ export default function CreateVotePage() {
   const [match, setMatch] = useState<Match | null>(null)
   const [members, setMembers] = useState<TeamMember[]>([])
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
-  const [currentUserName, setCurrentUserName] = useState('')
 
 
   useEffect(() => {
