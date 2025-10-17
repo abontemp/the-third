@@ -418,7 +418,7 @@ return (
                     </p>
 
 {/* Vérifier si l'utilisateur est lecteur désigné */}
-{session.status === 'reading' && (session.flop_reader_id === currentUser.id || session.top_reader_id === currentUser.id) ? (
+{session.status === 'reading' && (session.flop_reader_id === user?.id || session.top_reader_id === user?.id) ? (
   <button
     onClick={() => router.push(`/vote/${session.id}/reading`)}
     className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 animate-pulse"
