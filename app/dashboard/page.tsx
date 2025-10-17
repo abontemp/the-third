@@ -43,8 +43,7 @@ export default function DashboardPage() {
 }>>([])
   const [votingSessions, setVotingSessions] = useState<VotingSession[]>([])
   const [currentUserName, setCurrentUserName] = useState('')
-  const [user, setUser] = useState<any>(null) // AJOUTE CETTE LIGNE
-
+const [user, setUser] = useState<{ id: string } | null>(null)
 
 
   useEffect(() => {
