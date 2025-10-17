@@ -24,19 +24,38 @@ export default function LoginPage() {
   })
 
   // AJOUTEZ CE useEffect
-  useEffect(() => {
-    // Nettoyer tous les cookies Supabase au chargement de la page
-    const cleanSupabaseCookies = () => {
-      const cookies = document.cookie.split(';')
-      cookies.forEach(cookie => {
-        const [name] = cookie.split('=')
-        if (name.trim().includes('supabase') || name.trim().includes('sb-')) {
-          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`
-        }
-      })
-    }
-    cleanSupabaseCookies()
-  }, [])
+ useEffect(() => {
+  // Nettoyer TOUT le stockage Supabase
+  const cleanAll = () => {
+    // 1. Nettoyer localStorage
+    Object.keys(localStorage).forEach(key => {
+      if (key.includes('supabase') || key.includes('sb-')) {
+        localStorage.removeItem(key)
+      }
+    })
+    
+    // 2. Nettoyer sessionStorage
+    Object.keys(sessionStorage).forEach(key => {
+      if (key.includes('supabase') || key.includes('sb-')) {
+        sessionStorage.removeItem(key)
+      }
+    })
+    
+    // 3. Nettoyer cookies
+    document.cookie.split(';').forEach(cookie => {
+      const [name] = cookie.split('=')
+      const trimmedName = name.trim()
+      if (trimmedName.includes('supabase') || trimmedName.includes('sb-')) {
+        // Supprimer pour tous les chemins possibles
+        document.cookie = `${trimmedName}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`
+        document.cookie = `${trimmedName}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;domain=${window.location.hostname}`
+      }
+    })
+  }
+  
+  cleanAll()
+  console.log('✅ Tout le stockage Supabase a été nettoyé')
+}, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
