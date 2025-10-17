@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'  // AJOUTE CETTE LIGNE
 import Link from 'next/link'
 import { Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 
 export default function LoginPage() {
+    const router = useRouter()  // AJOUTE CETTE LIGNE
   const [isLogin, setIsLogin] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -64,14 +66,16 @@ export default function LoginPage() {
           // A des équipes, rediriger vers dashboard
           setSuccess('Connexion réussie ! Redirection...')
           setTimeout(() => {
-            window.location.href = '/dashboard'
-          }, 1000)
+  router.push('/dashboard')
+  router.refresh()  // Force le rechargement des données
+}, 1000)
         } else {
           // Pas d'équipe, rediriger vers onboarding
           setSuccess('Connexion réussie ! Redirection...')
           setTimeout(() => {
-            window.location.href = '/onboarding'
-          }, 1000)
+  router.push('/onboarding')
+  router.refresh()
+}, 1000)
         }
       } else {
         const { error } = await supabase.auth.signUp({
@@ -88,11 +92,12 @@ export default function LoginPage() {
         setSuccess('Compte créé ! Redirection...')
         
         // Nouveau compte = pas d'équipe, aller à onboarding
-        setTimeout(() => {
-          window.location.href = '/onboarding'
-        }, 1500)
+       setTimeout(() => {
+  router.push('/onboarding')
+  router.refresh()
+}, 1500)
       }
-      
+
     } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Une erreur est survenue')
     } finally {
