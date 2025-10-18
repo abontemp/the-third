@@ -613,10 +613,13 @@ export default function DashboardPage() {
                 <Plus size={20} />
                 Créer un match
               </button>
-              <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2">
-                <Calendar size={20} />
-                Historique
-              </button>
+              <button 
+  onClick={() => router.push('/dashboard/history')}  // Changez cette ligne
+  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+>
+  <Calendar size={20} />
+  Historique
+</button>
             </div>
           </div>
         )}
