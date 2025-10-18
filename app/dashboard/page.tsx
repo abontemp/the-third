@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase/client'
 import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trophy } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'  // AJOUTE CETTE LIGNE
 
 type VotingSession = {
   id: string
@@ -29,7 +28,7 @@ type Team = {
 
 export default function DashboardPage() {
   const router = useRouter()
-    const supabase = createClientComponentClient()  // AJOUTE CETTE LIGNE
+const supabase = createClient()  // Utilisez celui de votre lib
   const [loading, setLoading] = useState(true)
   const [teams, setTeams] = useState<Team[]>([])
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
@@ -56,11 +55,12 @@ const loadDashboard = async () => {
     setLoading(true)
     
     // AJOUTE CES LIGNES AU DÉBUT
-    const { data: { user: currentUser } } = await supabase.auth.getUser()
-    if (!currentUser) {
-      router.push('/login')
-      return
-    }
+// Le middleware garantit qu'on a un user ici
+const { data: { user: currentUser } } = await supabase.auth.getUser()
+if (!currentUser) {
+  console.error('Pas d\'utilisateur malgré le middleware')
+  return
+}
     setUser(currentUser)
 
       const { data: profileData } = await supabase
