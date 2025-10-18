@@ -252,6 +252,9 @@ export default function DashboardPage() {
       `)
       .eq('team_id', teamId)
 
+  console.log('📋 Membres data brute:', membersData) // AJOUTEZ CE LOG
+
+
     const formattedMembers = membersData?.map(member => ({
       id: member.id,
       role: member.role,
@@ -262,6 +265,7 @@ export default function DashboardPage() {
       email: (member.profiles as { email?: string })?.email
     })) || []
 
+  console.log('✅ Membres formatés:', formattedMembers) // AJOUTEZ CE LOG
     setMembers(formattedMembers)
 
     const { data: { user: currentUser } } = await supabase.auth.getUser()

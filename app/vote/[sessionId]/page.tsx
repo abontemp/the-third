@@ -42,7 +42,7 @@ export default function VotePage() {
   const [hasVoted, setHasVoted] = useState(false)
 
   const [topPlayerId, setTopPlayerId] = useState('')
-  const [flopPlayerId] = useState('')
+const [flopPlayerId, setFlopPlayerId] = useState('')
   const [topJustification, setTopJustification] = useState('')
   const [flopJustification, setFlopJustification] = useState('')
 
@@ -416,8 +416,8 @@ const handleSubmit = async () => {
                   Sélectionnez le joueur à améliorer *
                 </label>
                 <select
-  value={topPlayerId}
-  onChange={(e) => setTopPlayerId(e.target.value)}
+  value={flopPlayerId}  // ✅ Correct
+  onChange={(e) => setFlopPlayerId(e.target.value)}
   className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
 >
   <option value="">Choisir un joueur...</option>

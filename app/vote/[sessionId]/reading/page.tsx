@@ -55,7 +55,6 @@ export default function ReadingPage() {
         return
       }
 
-      // Charger la session
       const { data: sessionData } = await supabase
         .from('voting_sessions')
         .select(`
@@ -89,7 +88,6 @@ export default function ReadingPage() {
         }
       })
 
-      // Vérifier si l'utilisateur est un lecteur
       if (sessionData.flop_reader_id === user.id) {
         setIsReader(true)
         setReaderType('flop')
@@ -98,7 +96,6 @@ export default function ReadingPage() {
         setReaderType('top')
       }
 
-      // Charger tous les votes avec les infos des votants
       const { data: votesData } = await supabase
         .from('votes')
         .select(`
@@ -111,22 +108,19 @@ export default function ReadingPage() {
         `)
         .eq('session_id', sessionId)
 
+      const votesWithProfiles = votesData?.map(vote => {
+        return {
+          ...vote,
+          voter: {
+            first_name: 'Anonyme',
+            last_name: '',
+            email: ''
+          }
+        }
+      }) || []
 
-const votesWithProfiles = votesData?.map(vote => {
-  return {
-    ...vote,
-    voter: {
-      first_name: 'Anonyme', // Masquer le votant
-      last_name: '',
-      email: ''
-    }
-  }
-}) || []
-
-// Shuffler les votes pour randomiser l'ordre
-const shuffledVotes = [...votesWithProfiles].sort(() => Math.random() - 0.5)
-
-setVotes(shuffledVotes)
+      const shuffledVotes = [...votesWithProfiles].sort(() => Math.random() - 0.5)
+      setVotes(shuffledVotes)
 
     } catch (err) {
       console.error('Erreur:', err)
@@ -135,35 +129,29 @@ setVotes(shuffledVotes)
     }
   }
 
-const handleNextVote = () => {
-  if (currentVoteIndex < votes.length - 1) {
-    setCurrentVoteIndex(currentVoteIndex + 1)
-  } else {
-    // Fin de la phase actuelle
-    if (readingPhase === 'flop') {
-      setReadingPhase('top')
-      setCurrentVoteIndex(0)
+  const handleNextVote = () => {
+    if (currentVoteIndex < votes.length - 1) {
+      setCurrentVoteIndex(currentVoteIndex + 1)
     } else {
-      // Au lieu d'appeler handleFinishReading, passer à 'finished'
-      setReadingPhase('finished')
+      if (readingPhase === 'flop') {
+        setReadingPhase('top')
+        setCurrentVoteIndex(0)
+      } else {
+        setReadingPhase('finished')
+      }
     }
   }
-}
 
   const handleFinishReading = async () => {
     try {
       const supabase = createClient()
       
-      // Clôturer la session
       await supabase
         .from('voting_sessions')
         .update({ status: 'closed' })
         .eq('id', sessionId)
 
-      // Rediriger vers les résultats
-      setTimeout(() => {
-        router.push(`/vote/${sessionId}/results`)
-      }, 1000)
+      router.push(`/vote/${sessionId}/results`)
 
     } catch (err) {
       console.error('Erreur:', err)
@@ -198,10 +186,6 @@ const handleNextVote = () => {
   const currentJustification = readingPhase === 'flop' 
     ? currentVote.flop_justification 
     : currentVote.top_justification
-
-  // const voterName = currentVote.voter.first_name && currentVote.voter.last_name
-    ? `${currentVote.voter.first_name} ${currentVote.voter.last_name}`
-    : currentVote.voter.email || 'Anonyme'
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -240,127 +224,98 @@ const handleNextVote = () => {
           </div>
           <div className="mt-4 text-center">
             <p className="text-gray-400 text-sm">
-              Vote {currentVoteIndex + 1} sur {votes.length}
+              {readingPhase !== 'finished' && `Vote ${currentVoteIndex + 1} sur ${votes.length}`}
             </p>
           </div>
         </div>
 
-        {/* Carte de vote */}
-        <div className={`bg-gradient-to-br ${
-          readingPhase === 'flop' 
-            ? 'from-orange-900/30 to-red-900/30 border-orange-500/30' 
-            : 'from-blue-900/30 to-purple-900/30 border-blue-500/30'
-        } border rounded-2xl p-8 mb-6`}>
-          <div className="flex items-center gap-3 mb-6">
-            {readingPhase === 'flop' ? (
-              <ThumbsDown className="text-orange-400" size={40} />
-            ) : (
-              <Trophy className="text-blue-400" size={40} />
+        {/* Contenu selon la phase */}
+        {readingPhase === 'finished' ? (
+          // Écran de fin
+          <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-2xl p-12 text-center">
+            <Trophy className="text-yellow-400 mx-auto mb-6" size={80} />
+            <h2 className="text-4xl font-bold text-white mb-4">🎉 Lecture terminée ! 🎉</h2>
+            <p className="text-gray-300 mb-8 text-lg">
+              Il est temps de découvrir le podium !
+            </p>
+            
+            {isReader && (
+              <button
+                onClick={handleFinishReading}
+                className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-8 py-4 rounded-lg text-xl font-bold hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-3 mx-auto"
+              >
+                <Trophy size={28} />
+                🏆 Voir le podium final
+              </button>
             )}
-            <div>
-              <h2 className="text-2xl font-bold text-white">
-                {readingPhase === 'flop' ? 'FLOP' : 'TOP'}
-              </h2>
+
+            {!isReader && (
+              <p className="text-gray-400 text-sm mt-4">
+                Le lecteur va annoncer le podium...
+              </p>
+            )}
+          </div>
+        ) : (
+          // Lecture en cours
+          <>
+            <div className={`bg-gradient-to-br ${
+              readingPhase === 'flop' 
+                ? 'from-orange-900/30 to-red-900/30 border-orange-500/30' 
+                : 'from-blue-900/30 to-purple-900/30 border-blue-500/30'
+            } border rounded-2xl p-8 mb-6`}>
+              <div className="flex items-center gap-3 mb-6">
+                {readingPhase === 'flop' ? (
+                  <ThumbsDown className="text-orange-400" size={40} />
+                ) : (
+                  <Trophy className="text-blue-400" size={40} />
+                )}
+                <div>
+                  <h2 className="text-2xl font-bold text-white">
+                    {readingPhase === 'flop' ? 'FLOP' : 'TOP'}
+                  </h2>
+                </div>
+              </div>
+
+              <div className="bg-slate-800/50 rounded-lg p-6 border border-white/10">
+                <p className="text-white text-lg leading-relaxed whitespace-pre-wrap">
+                  {currentJustification}
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div className="bg-slate-800/50 rounded-lg p-6 border border-white/10">
-            <p className="text-white text-lg leading-relaxed whitespace-pre-wrap">
-              {currentJustification}
-            </p>
-          </div>
-        </div>
+            {isReader && readerType === readingPhase && (
+              <button
+                onClick={handleNextVote}
+                className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
+              >
+                {currentVoteIndex < votes.length - 1 ? (
+                  <>
+                    <span>Vote suivant</span>
+                    <ChevronRight size={20} />
+                  </>
+                ) : readingPhase === 'flop' ? (
+                  <>
+                    <span>Passer aux votes TOP</span>
+                    <ChevronRight size={20} />
+                  </>
+                ) : (
+                  <>
+                    <span>Terminer la lecture</span>
+                    <Trophy size={20} />
+                  </>
+                )}
+              </button>
+            )}
 
-{/* Contenu conditionnel selon la phase */}
-{readingPhase === 'finished' ? (
-  // Écran de fin avec bouton podium
-  <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-2xl p-12 text-center">
-    <Trophy className="text-yellow-400 mx-auto mb-6" size={80} />
-    <h2 className="text-4xl font-bold text-white mb-4">🎉 Lecture terminée ! 🎉</h2>
-    <p className="text-gray-300 mb-8 text-lg">
-      Il est temps de découvrir le podium !
-    </p>
-    
-    {isReader && (
-      <button
-        onClick={handleFinishReading}
-        className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-8 py-4 rounded-lg text-xl font-bold hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-3 mx-auto"
-      >
-        <Trophy size={28} />
-        🏆 Annonce du podium
-      </button>
-    )}
-
-    {!isReader && (
-      <p className="text-gray-400 text-sm mt-4">
-        Le lecteur va annoncer le podium...
-      </p>
-    )}
-  </div>
-) : (
-  // Lecture en cours
-  <>
-    {/* Carte de vote */}
-    <div className={`bg-gradient-to-br ${
-      readingPhase === 'flop' 
-        ? 'from-orange-900/30 to-red-900/30 border-orange-500/30' 
-        : 'from-blue-900/30 to-purple-900/30 border-blue-500/30'
-    } border rounded-2xl p-8 mb-6`}>
-      <div className="flex items-center gap-3 mb-6">
-        {readingPhase === 'flop' ? (
-          <ThumbsDown className="text-orange-400" size={40} />
-        ) : (
-          <Trophy className="text-blue-400" size={40} />
-        )}
-        <div>
-          <h2 className="text-2xl font-bold text-white">
-            {readingPhase === 'flop' ? 'FLOP' : 'TOP'}
-          </h2>
-        </div>
-      </div>
-
-      <div className="bg-slate-800/50 rounded-lg p-6 border border-white/10">
-        <p className="text-white text-lg leading-relaxed whitespace-pre-wrap">
-          {currentJustification}
-        </p>
-      </div>
-    </div>
-
-    {/* Bouton suivant (seulement pour le lecteur concerné) */}
-    {isReader && readerType === readingPhase && (
-      <button
-        onClick={handleNextVote}
-        className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
-      >
-        {currentVoteIndex < votes.length - 1 ? (
-          <>
-            <span>Vote suivant</span>
-            <ChevronRight size={20} />
-          </>
-        ) : readingPhase === 'flop' ? (
-          <>
-            <span>Passer aux votes TOP</span>
-            <ChevronRight size={20} />
-          </>
-        ) : (
-          <>
-            <span>Terminer la lecture</span>
-            <Trophy size={20} />
+            {!isReader && (
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-center">
+                <p className="text-blue-300">
+                  Suivez la lecture. Le lecteur passera au vote suivant.
+                </p>
+              </div>
+            )}
           </>
         )}
-      </button>
-    )}
-
-    {/* Message pour les non-lecteurs */}
-    {!isReader && (
-      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-center">
-        <p className="text-blue-300">
-          Suivez la lecture. Le lecteur passera au vote suivant.
-        </p>
-      </div>
-    )}
-  </>
-)}
       </div>
     </div>
   )
