@@ -52,6 +52,30 @@ export default function DashboardPage() {
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null)
   const [hasVotes, setHasVotes] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showManagerModal, setShowManagerModal] = useState(false)
+
+  const handleToggleManager = async (member: Member) => {
+    if (!selectedTeam) return
+    
+    const newRole = member.role === 'manager' ? 'member' : 'manager'
+    
+    try {
+      const { error } = await supabase
+        .from('team_members')
+        .update({ role: newRole })
+        .eq('id', member.id)
+      
+      if (error) throw error
+      
+      // Recharger les membres
+      await loadTeamDetails(selectedTeam.id, selectedTeam)
+      
+      alert(`${member.first_name || member.email} est maintenant ${newRole === 'manager' ? 'manager' : 'membre'}`)
+    } catch (err) {
+      console.error('Erreur:', err)
+      alert('Erreur lors de la modification du rôle')
+    }
+  }
 
   useEffect(() => {
     loadDashboard()
@@ -132,15 +156,15 @@ export default function DashboardPage() {
 
   const handleJoinVote = async (sessionId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
       
-      if (!user) return
+      if (!currentUser) return
 
       const { error } = await supabase
         .from('session_participants')
         .insert([{
           session_id: sessionId,
-          user_id: user.id,
+          user_id: currentUser.id,
           has_voted: false
         }])
 
@@ -234,135 +258,134 @@ export default function DashboardPage() {
     }
   }
 
-const loadTeamDetails = async (teamId: string, team: Team) => {
-  setSelectedTeam(team)
-  
-  console.log('🔍 Chargement des membres pour team_id:', teamId)
-  
-  // Charger les membres SANS la relation profiles
-  const { data: membersData, error: membersError } = await supabase
-    .from('team_members')
-    .select('id, role, joined_at, user_id')
-    .eq('team_id', teamId)
-
-  console.log('📋 Membres data (sans profiles):', membersData)
-  console.log('❌ Erreur membres:', membersError)
-
-  if (membersError) {
-    console.error('Erreur Supabase:', membersError)
-    setMembers([])
-    // Continuer quand même pour charger les votes
-  } else if (!membersData || membersData.length === 0) {
-    console.log('⚠️ Aucun membre trouvé pour cette équipe')
-    setMembers([])
-  } else {
-    // Charger les profiles séparément
-    const userIds = membersData.map(m => m.user_id)
+  const loadTeamDetails = async (teamId: string, team: Team) => {
+    setSelectedTeam(team)
     
-    const { data: profilesData, error: profilesError } = await supabase
-      .from('profiles')
-      .select('id, first_name, last_name, email')
-      .in('id', userIds)
-
-    console.log('👤 Profiles data:', profilesData)
-    console.log('❌ Erreur profiles:', profilesError)
-
-    // Créer un mapping des profiles
-    const profilesMap: Record<string, { first_name?: string; last_name?: string; email?: string }> = {}
-    profilesData?.forEach(profile => {
-      profilesMap[profile.id] = {
-        first_name: profile.first_name,
-        last_name: profile.last_name,
-        email: profile.email
-      }
-    })
-
-    // Combiner les membres avec leurs profiles
-    const formattedMembers = membersData.map(member => ({
-      id: member.id,
-      role: member.role,
-      joined_at: member.joined_at,
-      user_id: member.user_id,
-      first_name: profilesMap[member.user_id]?.first_name,
-      last_name: profilesMap[member.user_id]?.last_name,
-      email: profilesMap[member.user_id]?.email
-    }))
-
-    console.log('✅ Membres formatés:', formattedMembers)
-    setMembers(formattedMembers)
-  }
-
-  // Charger les votes en cours pour cette équipe
-  const { data: { user: currentUser } } = await supabase.auth.getUser()
-  
-  if (currentUser) {
-    const { data: seasonsData } = await supabase
-      .from('seasons')
-      .select('id')
+    console.log('🔍 Chargement des membres pour team_id:', teamId)
+    
+    // Charger les membres SANS la relation profiles
+    const { data: membersData, error: membersError } = await supabase
+      .from('team_members')
+      .select('id, role, joined_at, user_id')
       .eq('team_id', teamId)
 
-    const seasonIds = seasonsData?.map(s => s.id) || []
+    console.log('📋 Membres data (sans profiles):', membersData)
+    console.log('❌ Erreur membres:', membersError)
 
-    if (seasonIds.length > 0) {
-      const { data: matchesData } = await supabase
-        .from('matches')
+    if (membersError) {
+      console.error('Erreur Supabase:', membersError)
+      setMembers([])
+    } else if (!membersData || membersData.length === 0) {
+      console.log('⚠️ Aucun membre trouvé pour cette équipe')
+      setMembers([])
+    } else {
+      // Charger les profiles séparément
+      const userIds = membersData.map(m => m.user_id)
+      
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, email')
+        .in('id', userIds)
+
+      console.log('👤 Profiles data:', profilesData)
+      console.log('❌ Erreur profiles:', profilesError)
+
+      // Créer un mapping des profiles
+      const profilesMap: Record<string, { first_name?: string; last_name?: string; email?: string }> = {}
+      profilesData?.forEach(profile => {
+        profilesMap[profile.id] = {
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          email: profile.email
+        }
+      })
+
+      // Combiner les membres avec leurs profiles
+      const formattedMembers = membersData.map(member => ({
+        id: member.id,
+        role: member.role,
+        joined_at: member.joined_at,
+        user_id: member.user_id,
+        first_name: profilesMap[member.user_id]?.first_name,
+        last_name: profilesMap[member.user_id]?.last_name,
+        email: profilesMap[member.user_id]?.email
+      }))
+
+      console.log('✅ Membres formatés:', formattedMembers)
+      setMembers(formattedMembers)
+    }
+
+    // Charger les votes en cours pour cette équipe
+    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    
+    if (currentUser) {
+      const { data: seasonsData } = await supabase
+        .from('seasons')
         .select('id')
-        .in('season_id', seasonIds)
+        .eq('team_id', teamId)
 
-      const matchIds = matchesData?.map(m => m.id) || []
+      const seasonIds = seasonsData?.map(s => s.id) || []
 
-      if (matchIds.length > 0) {
-        const { data: sessionsData } = await supabase
-          .from('voting_sessions')
-          .select(`
-            id,
-            status,
-            flop_reader_id,
-            top_reader_id,
-            match_id,
-            matches (
-              opponent,
-              match_date
+      if (seasonIds.length > 0) {
+        const { data: matchesData } = await supabase
+          .from('matches')
+          .select('id')
+          .in('season_id', seasonIds)
+
+        const matchIds = matchesData?.map(m => m.id) || []
+
+        if (matchIds.length > 0) {
+          const { data: sessionsData } = await supabase
+            .from('voting_sessions')
+            .select(`
+              id,
+              status,
+              flop_reader_id,
+              top_reader_id,
+              match_id,
+              matches (
+                opponent,
+                match_date
+              )
+            `)
+            .in('match_id', matchIds)
+            .in('status', ['open', 'reading'])
+
+          if (sessionsData && sessionsData.length > 0) {
+            const sessionsWithStatus = await Promise.all(
+              sessionsData.map(async (session) => {
+                const { data: participantData } = await supabase
+                  .from('session_participants')
+                  .select('has_voted')
+                  .eq('session_id', session.id)
+                  .eq('user_id', currentUser.id)
+                  .single()
+
+                const matchData = Array.isArray(session.matches) 
+                  ? session.matches[0] 
+                  : session.matches
+
+                return {
+                  id: session.id,
+                  status: session.status,
+                  flop_reader_id: session.flop_reader_id,
+                  top_reader_id: session.top_reader_id,
+                  match: {
+                    opponent: matchData?.opponent || '',
+                    match_date: matchData?.match_date || ''
+                  },
+                  has_voted: participantData?.has_voted || false,
+                  is_participant: !!participantData
+                }
+              })
             )
-          `)
-          .in('match_id', matchIds)
-          .in('status', ['open', 'reading'])
 
-        if (sessionsData && sessionsData.length > 0) {
-          const sessionsWithStatus = await Promise.all(
-            sessionsData.map(async (session) => {
-              const { data: participantData } = await supabase
-                .from('session_participants')
-                .select('has_voted')
-                .eq('session_id', session.id)
-                .eq('user_id', currentUser.id)
-                .single()
-
-              const matchData = Array.isArray(session.matches) 
-                ? session.matches[0] 
-                : session.matches
-
-              return {
-                id: session.id,
-                status: session.status,
-                flop_reader_id: session.flop_reader_id,
-                top_reader_id: session.top_reader_id,
-                match: {
-                  opponent: matchData?.opponent || '',
-                  match_date: matchData?.match_date || ''
-                },
-                has_voted: participantData?.has_voted || false,
-                is_participant: !!participantData
-              }
-            })
-          )
-
-          setVotingSessions(sessionsWithStatus)
+            setVotingSessions(sessionsWithStatus)
+          }
         }
       }
     }
   }
-}
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -579,6 +602,14 @@ const loadTeamDetails = async (teamId: string, team: Team) => {
         <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6 mb-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-white">Membres de l&apos;équipe</h2>
+            {isManager && (
+              <button
+                onClick={() => setShowManagerModal(true)}
+                className="text-sm bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition"
+              >
+                Gérer les managers
+              </button>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -639,12 +670,12 @@ const loadTeamDetails = async (teamId: string, team: Team) => {
                 Créer un match
               </button>
               <button 
-  onClick={() => router.push('/dashboard/history')}  // Changez cette ligne
-  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
->
-  <Calendar size={20} />
-  Historique
-</button>
+                onClick={() => router.push('/dashboard/history')}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+              >
+                <Calendar size={20} />
+                Historique
+              </button>
             </div>
           </div>
         )}
@@ -710,6 +741,57 @@ const loadTeamDetails = async (teamId: string, team: Team) => {
                 {deleting ? 'Suppression...' : 'Supprimer'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de gestion des managers */}
+      {showManagerModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 border border-white/10 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <h3 className="text-xl font-bold text-white mb-4">
+              Gestion des managers
+            </h3>
+            <p className="text-gray-400 mb-6 text-sm">
+              Les managers peuvent créer des matchs, gérer les votes et voir les statistiques
+            </p>
+
+            <div className="space-y-3 mb-6">
+              {members
+                .filter(m => m.role !== 'creator')
+                .map((member) => (
+                  <div key={member.id} className="bg-slate-700/30 border border-white/10 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-white">
+                        {member.first_name && member.last_name 
+                          ? `${member.first_name} ${member.last_name}`
+                          : member.email || `Membre #${member.user_id.substring(0, 8)}`}
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        {member.role === 'manager' ? '✅ Manager' : 'Membre'}
+                      </p>
+                    </div>
+                    
+                    <button
+                      onClick={() => handleToggleManager(member)}
+                      className={`px-4 py-2 rounded-lg font-medium transition ${
+                        member.role === 'manager'
+                          ? 'bg-red-600 hover:bg-red-700 text-white'
+                          : 'bg-purple-600 hover:bg-purple-700 text-white'
+                      }`}
+                    >
+                      {member.role === 'manager' ? 'Retirer' : 'Nommer manager'}
+                    </button>
+                  </div>
+                ))}
+            </div>
+
+            <button
+              onClick={() => setShowManagerModal(false)}
+              className="w-full bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg transition"
+            >
+              Fermer
+            </button>
           </div>
         </div>
       )}
