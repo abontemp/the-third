@@ -1,6 +1,6 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trophy, Trash2, TrendingUp } from 'lucide-react'
+import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trophy, Trash2, TrendingUp, Quote, Swords, Award, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 
@@ -566,7 +566,7 @@ export default function DashboardPage() {
                           </div>
                         ) : (
                           <button
-                            onClick={() => router.push(`/vote/${session.id}`)}
+                            onClick={() => router.push(`/vote/${session.id}/predict`)}
                             className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
                           >
                             <Vote size={18} />
@@ -689,7 +689,7 @@ export default function DashboardPage() {
         )}
 
         {/* Section Équipes pour tout le monde */}
-        <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-6">
+        <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-6 mb-6">
           <h2 className="text-2xl font-bold text-white mb-4">Équipes</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <button 
@@ -708,6 +708,41 @@ export default function DashboardPage() {
                 Changer d&apos;équipe
               </button>
             )}
+          </div>
+        </div>
+
+        {/* Section Fun Features pour tout le monde */}
+        <div className="bg-gradient-to-br from-pink-900/30 to-purple-900/30 border border-pink-500/30 rounded-xl p-6">
+          <h2 className="text-2xl font-bold text-white mb-4">🎮 Fonctionnalités Fun</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <button 
+              onClick={() => router.push('/dashboard/badges')}
+              className="bg-gradient-to-br from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+            >
+              <Award size={20} />
+              Mes Badges
+            </button>
+            <button 
+              onClick={() => router.push('/dashboard/quotes')}
+              className="bg-gradient-to-br from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+            >
+              <Quote size={20} />
+              Citations
+            </button>
+            <button 
+              onClick={() => router.push('/dashboard/rivalries')}
+              className="bg-gradient-to-br from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+            >
+              <Swords size={20} />
+              Rivalités
+            </button>
+            <button 
+              onClick={() => router.push('/dashboard/predictions-leaderboard')}
+              className="bg-gradient-to-br from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+            >
+              <Sparkles size={20} />
+              Pronostiqueurs
+            </button>
           </div>
         </div>
       </div>
