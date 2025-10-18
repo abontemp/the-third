@@ -468,13 +468,14 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="hidden sm:flex items-center gap-3 bg-slate-800/50 px-4 py-2 rounded-lg border border-white/10">
+              <div className="hidden sm:flex items-center gap-3 bg-slate-800/50 px-4 py-2 rounded-lg border border-white/10 cursor-pointer hover:border-blue-500/50 transition"
+                   onClick={() => router.push('/dashboard/profile')}>
                 <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
                   {currentUserName ? currentUserName[0].toUpperCase() : 'U'}
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-medium text-white">{currentUserName}</p>
-                  <p className="text-xs text-gray-400">Connecté</p>
+                  <p className="text-xs text-gray-400">Voir mon profil</p>
                 </div>
               </div>
 
