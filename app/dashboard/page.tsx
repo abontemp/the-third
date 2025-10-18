@@ -234,110 +234,135 @@ export default function DashboardPage() {
     }
   }
 
-  const loadTeamDetails = async (teamId: string, team: Team) => {
-    setSelectedTeam(team)
+const loadTeamDetails = async (teamId: string, team: Team) => {
+  setSelectedTeam(team)
+  
+  console.log('🔍 Chargement des membres pour team_id:', teamId)
+  
+  // Charger les membres SANS la relation profiles
+  const { data: membersData, error: membersError } = await supabase
+    .from('team_members')
+    .select('id, role, joined_at, user_id')
+    .eq('team_id', teamId)
+
+  console.log('📋 Membres data (sans profiles):', membersData)
+  console.log('❌ Erreur membres:', membersError)
+
+  if (membersError) {
+    console.error('Erreur Supabase:', membersError)
+    setMembers([])
+    // Continuer quand même pour charger les votes
+  } else if (!membersData || membersData.length === 0) {
+    console.log('⚠️ Aucun membre trouvé pour cette équipe')
+    setMembers([])
+  } else {
+    // Charger les profiles séparément
+    const userIds = membersData.map(m => m.user_id)
     
-    const { data: membersData } = await supabase
-      .from('team_members')
-      .select(`
-        id, 
-        role, 
-        joined_at, 
-        user_id,
-        profiles (
-          first_name,
-          last_name,
-          email
-        )
-      `)
-      .eq('team_id', teamId)
+    const { data: profilesData, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, first_name, last_name, email')
+      .in('id', userIds)
 
-  console.log('📋 Membres data brute:', membersData) // AJOUTEZ CE LOG
+    console.log('👤 Profiles data:', profilesData)
+    console.log('❌ Erreur profiles:', profilesError)
 
+    // Créer un mapping des profiles
+    const profilesMap: Record<string, { first_name?: string; last_name?: string; email?: string }> = {}
+    profilesData?.forEach(profile => {
+      profilesMap[profile.id] = {
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        email: profile.email
+      }
+    })
 
-    const formattedMembers = membersData?.map(member => ({
+    // Combiner les membres avec leurs profiles
+    const formattedMembers = membersData.map(member => ({
       id: member.id,
       role: member.role,
       joined_at: member.joined_at,
       user_id: member.user_id,
-      first_name: (member.profiles as { first_name?: string })?.first_name,
-      last_name: (member.profiles as { last_name?: string })?.last_name,
-      email: (member.profiles as { email?: string })?.email
-    })) || []
+      first_name: profilesMap[member.user_id]?.first_name,
+      last_name: profilesMap[member.user_id]?.last_name,
+      email: profilesMap[member.user_id]?.email
+    }))
 
-  console.log('✅ Membres formatés:', formattedMembers) // AJOUTEZ CE LOG
+    console.log('✅ Membres formatés:', formattedMembers)
     setMembers(formattedMembers)
+  }
 
-    const { data: { user: currentUser } } = await supabase.auth.getUser()
-    
-    if (currentUser) {
-      const { data: seasonsData } = await supabase
-        .from('seasons')
+  // Charger les votes en cours pour cette équipe
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  
+  if (currentUser) {
+    const { data: seasonsData } = await supabase
+      .from('seasons')
+      .select('id')
+      .eq('team_id', teamId)
+
+    const seasonIds = seasonsData?.map(s => s.id) || []
+
+    if (seasonIds.length > 0) {
+      const { data: matchesData } = await supabase
+        .from('matches')
         .select('id')
-        .eq('team_id', teamId)
+        .in('season_id', seasonIds)
 
-      const seasonIds = seasonsData?.map(s => s.id) || []
+      const matchIds = matchesData?.map(m => m.id) || []
 
-      if (seasonIds.length > 0) {
-        const { data: matchesData } = await supabase
-          .from('matches')
-          .select('id')
-          .in('season_id', seasonIds)
-
-        const matchIds = matchesData?.map(m => m.id) || []
-
-        if (matchIds.length > 0) {
-          const { data: sessionsData } = await supabase
-            .from('voting_sessions')
-            .select(`
-              id,
-              status,
-              flop_reader_id,
-              top_reader_id,
-              match_id,
-              matches (
-                opponent,
-                match_date
-              )
-            `)
-            .in('match_id', matchIds)
-            .in('status', ['open', 'reading'])
-
-          if (sessionsData && sessionsData.length > 0) {
-            const sessionsWithStatus = await Promise.all(
-              sessionsData.map(async (session) => {
-                const { data: participantData } = await supabase
-                  .from('session_participants')
-                  .select('has_voted')
-                  .eq('session_id', session.id)
-                  .eq('user_id', currentUser.id)
-                  .single()
-
-                const matchData = Array.isArray(session.matches) 
-                  ? session.matches[0] 
-                  : session.matches
-
-                return {
-                  id: session.id,
-                  status: session.status,
-                  flop_reader_id: session.flop_reader_id,
-                  top_reader_id: session.top_reader_id,
-                  match: {
-                    opponent: matchData?.opponent || '',
-                    match_date: matchData?.match_date || ''
-                  },
-                  has_voted: participantData?.has_voted || false,
-                  is_participant: !!participantData
-                }
-              })
+      if (matchIds.length > 0) {
+        const { data: sessionsData } = await supabase
+          .from('voting_sessions')
+          .select(`
+            id,
+            status,
+            flop_reader_id,
+            top_reader_id,
+            match_id,
+            matches (
+              opponent,
+              match_date
             )
+          `)
+          .in('match_id', matchIds)
+          .in('status', ['open', 'reading'])
 
-            setVotingSessions(sessionsWithStatus)
-          }
+        if (sessionsData && sessionsData.length > 0) {
+          const sessionsWithStatus = await Promise.all(
+            sessionsData.map(async (session) => {
+              const { data: participantData } = await supabase
+                .from('session_participants')
+                .select('has_voted')
+                .eq('session_id', session.id)
+                .eq('user_id', currentUser.id)
+                .single()
+
+              const matchData = Array.isArray(session.matches) 
+                ? session.matches[0] 
+                : session.matches
+
+              return {
+                id: session.id,
+                status: session.status,
+                flop_reader_id: session.flop_reader_id,
+                top_reader_id: session.top_reader_id,
+                match: {
+                  opponent: matchData?.opponent || '',
+                  match_date: matchData?.match_date || ''
+                },
+                has_voted: participantData?.has_voted || false,
+                is_participant: !!participantData
+              }
+            })
+          )
+
+          setVotingSessions(sessionsWithStatus)
         }
       }
     }
   }
+}
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
