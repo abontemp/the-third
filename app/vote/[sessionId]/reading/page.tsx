@@ -40,6 +40,7 @@ export default function ReadingPage() {
   const [readingPhase, setReadingPhase] = useState<'flop' | 'top' | 'finished'>('flop')
   const [isReader, setIsReader] = useState(false)
   const [readerType, setReaderType] = useState<'flop' | 'top' | null>(null)
+  const [isManager, setIsManager] = useState(false)
 
   useEffect(() => {
     loadReadingData()
@@ -64,7 +65,8 @@ export default function ReadingPage() {
           match_id,
           matches (
             opponent,
-            match_date
+            match_date,
+            season_id
           )
         `)
         .eq('id', sessionId)
@@ -77,6 +79,28 @@ export default function ReadingPage() {
       const matchData = Array.isArray(sessionData.matches)
         ? sessionData.matches[0]
         : sessionData.matches
+
+      // Vérifier si l'utilisateur est manager
+      if (matchData?.season_id) {
+        const { data: seasonData } = await supabase
+          .from('seasons')
+          .select('team_id')
+          .eq('id', matchData.season_id)
+          .single()
+
+        if (seasonData?.team_id) {
+          const { data: memberData } = await supabase
+            .from('team_members')
+            .select('role')
+            .eq('team_id', seasonData.team_id)
+            .eq('user_id', user.id)
+            .single()
+
+          if (memberData && (memberData.role === 'manager' || memberData.role === 'creator')) {
+            setIsManager(true)
+          }
+        }
+      }
 
       setSession({
         id: sessionData.id,
@@ -187,6 +211,8 @@ export default function ReadingPage() {
     ? currentVote.flop_justification 
     : currentVote.top_justification
 
+  const canControl = isManager || (isReader && readerType === readingPhase)
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
@@ -202,7 +228,10 @@ export default function ReadingPage() {
 
             <div className="text-right">
               <h2 className="text-white font-semibold">{session?.match.opponent}</h2>
-              <p className="text-gray-400 text-sm">Lecture des votes</p>
+              <p className="text-gray-400 text-sm">
+                Lecture des votes
+                {isManager && <span className="ml-2 text-yellow-400">(Manager)</span>}
+              </p>
             </div>
           </div>
         </div>
@@ -239,7 +268,7 @@ export default function ReadingPage() {
               Il est temps de découvrir le podium !
             </p>
             
-            {isReader && (
+            {(isManager || isReader) && (
               <button
                 onClick={handleFinishReading}
                 className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-8 py-4 rounded-lg text-xl font-bold hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-3 mx-auto"
@@ -249,7 +278,7 @@ export default function ReadingPage() {
               </button>
             )}
 
-            {!isReader && (
+            {!isManager && !isReader && (
               <p className="text-gray-400 text-sm mt-4">
                 Le lecteur va annoncer le podium...
               </p>
@@ -283,7 +312,7 @@ export default function ReadingPage() {
               </div>
             </div>
 
-            {isReader && readerType === readingPhase && (
+            {canControl && (
               <button
                 onClick={handleNextVote}
                 className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
@@ -307,7 +336,7 @@ export default function ReadingPage() {
               </button>
             )}
 
-            {!isReader && (
+            {!canControl && (
               <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-center">
                 <p className="text-blue-300">
                   Suivez la lecture. Le lecteur passera au vote suivant.
