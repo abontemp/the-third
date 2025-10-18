@@ -111,18 +111,13 @@ export default function MemorableQuotesPage() {
         })
         .map(q => {
           const voteData = Array.isArray(q.votes) ? q.votes[0] : q.votes
-          const sessionData = voteData?.voting_sessions
-          let matchData: any = undefined
-          if (Array.isArray(sessionData) && sessionData.length > 0 && sessionData[0]?.matches) {
-            matchData = Array.isArray(sessionData[0].matches) ? sessionData[0].matches[0] : sessionData[0].matches
-          } else if (Array.isArray(sessionData) && sessionData.length > 0 && sessionData[0]?.matches) {
-            matchData = Array.isArray(sessionData[0].matches)
-              ? sessionData[0].matches[0]
-              : sessionData[0].matches
-          }
-          const seasonData = matchData?.seasons
-            ? Array.isArray(matchData.seasons) ? matchData.seasons[0] : matchData.seasons
-            : undefined
+          const sessionData = voteData?.voting_sessions as { matches?: unknown } | undefined
+          const matchData = Array.isArray(sessionData?.matches) 
+            ? (sessionData.matches as { opponent?: string; match_date?: string; seasons?: unknown }[])[0] 
+            : (sessionData?.matches as { opponent?: string; match_date?: string; seasons?: unknown } | undefined)
+          const seasonData = Array.isArray(matchData?.seasons)
+            ? (matchData.seasons as { name?: string }[])[0]
+            : (matchData?.seasons as { name?: string } | undefined)
 
           return {
             id: q.id,

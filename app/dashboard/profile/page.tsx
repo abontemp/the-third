@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Camera, Loader, Save } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 
 export default function PlayerProfilePage() {
   const router = useRouter()

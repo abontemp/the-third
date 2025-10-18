@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader, Sparkles, Trophy, Medal } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 
 type PlayerPredictionStats = {
   user_id: string

@@ -30,8 +30,6 @@ export default function RivalriesPage() {
   const supabase = createClient()
   
   const [loading, setLoading] = useState(true)
-  const [userId, setUserId] = useState<string>('')
-  const [myName, setMyName] = useState<string>('')
   
   const [myRivals, setMyRivals] = useState<RivalryData[]>([])
   const [mySupporters, setMySupporters] = useState<SupporterData[]>([])
