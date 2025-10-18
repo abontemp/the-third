@@ -1,6 +1,6 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trophy, Trash2 } from 'lucide-react'
+import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trophy, Trash2, TrendingUp } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 
@@ -661,7 +661,7 @@ export default function DashboardPage() {
         {isManager && (
           <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-6 mb-6">
             <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <button 
                 onClick={() => router.push('/dashboard/matches/create')}
                 className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
@@ -675,6 +675,13 @@ export default function DashboardPage() {
               >
                 <Calendar size={20} />
                 Historique
+              </button>
+              <button 
+                onClick={() => router.push('/dashboard/stats')}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+              >
+                <TrendingUp size={20} />
+                Statistiques
               </button>
             </div>
           </div>
