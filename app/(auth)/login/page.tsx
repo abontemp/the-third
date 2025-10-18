@@ -91,18 +91,21 @@ export default function LoginPage() {
         
         // Vérifier si l'utilisateur a des équipes
         const { data: { user: currentUser } } = await supabase.auth.getUser()
+          console.log('👤 Current user:', currentUser)
         const { data: memberships } = await supabase
           .from('team_members')
           .select('team_id')
           .eq('user_id', currentUser?.id)
-        
-        if (memberships && memberships.length > 0) {
+          
+  console.log('🏆 Memberships:', memberships)
+
+            if (memberships && memberships.length > 0) {
           // A des équipes, rediriger vers dashboard
           setSuccess('Connexion réussie ! Redirection...')
           setTimeout(() => {
   router.push('/dashboard')
   router.refresh()  // Force le rechargement des données
-}, 1000)
+}, 500)
         } else {
           // Pas d'équipe, rediriger vers onboarding
           setSuccess('Connexion réussie ! Redirection...')
