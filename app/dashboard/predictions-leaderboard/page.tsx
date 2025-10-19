@@ -39,7 +39,6 @@ export default function PredictionsLeaderboardPage() {
         return
       }
 
-      // Récupérer l'équipe
       const { data: membership } = await supabase
         .from('team_members')
         .select('team_id')
@@ -51,7 +50,6 @@ export default function PredictionsLeaderboardPage() {
         return
       }
 
-      // Récupérer la saison en cours
       const { data: currentSeason } = await supabase
         .from('seasons')
         .select('id')
@@ -59,7 +57,6 @@ export default function PredictionsLeaderboardPage() {
         .eq('is_current', true)
         .single()
 
-      // Récupérer toutes les saisons si "all"
       let seasonIds: string[] = []
       if (filter === 'season' && currentSeason) {
         seasonIds = [currentSeason.id]
@@ -77,7 +74,6 @@ export default function PredictionsLeaderboardPage() {
         return
       }
 
-      // Récupérer tous les matchs
       const { data: matches } = await supabase
         .from('matches')
         .select('id')
@@ -91,7 +87,6 @@ export default function PredictionsLeaderboardPage() {
         return
       }
 
-      // Récupérer toutes les sessions de vote terminées
       const { data: sessions } = await supabase
         .from('voting_sessions')
         .select('id')
@@ -106,7 +101,6 @@ export default function PredictionsLeaderboardPage() {
         return
       }
 
-      // Récupérer toutes les prédictions
       const { data: predictions } = await supabase
         .from('predictions')
         .select('user_id, top_correct, flop_correct')
@@ -118,7 +112,6 @@ export default function PredictionsLeaderboardPage() {
         return
       }
 
-      // Calculer les stats par joueur
       const playerStats: Record<string, {
         total_predictions: number
         top_correct: number
@@ -149,7 +142,6 @@ export default function PredictionsLeaderboardPage() {
         }
       })
 
-      // Récupérer les profils
       const userIds = Object.keys(playerStats)
       const { data: profiles } = await supabase
         .from('profiles')
@@ -165,7 +157,6 @@ export default function PredictionsLeaderboardPage() {
         }
       })
 
-      // Créer le classement
       const leaderboardData: PlayerPredictionStats[] = Object.entries(playerStats)
         .map(([userId, stats]) => ({
           user_id: userId,
@@ -177,9 +168,8 @@ export default function PredictionsLeaderboardPage() {
           total_correct: stats.total_correct,
           accuracy_percentage: Math.round((stats.total_correct / (stats.total_predictions * 2)) * 100)
         }))
-        .filter(p => p.total_predictions >= 3) // Minimum 3 prédictions pour être classé
+        .filter(p => p.total_predictions >= 3)
         .sort((a, b) => {
-          // Trier par pourcentage de réussite, puis par nombre total de bonnes prédictions
           if (b.accuracy_percentage === a.accuracy_percentage) {
             return b.total_correct - a.total_correct
           }
@@ -188,7 +178,6 @@ export default function PredictionsLeaderboardPage() {
 
       setLeaderboard(leaderboardData)
 
-      // Trouver mon rang
       const myIndex = leaderboardData.findIndex(p => p.user_id === user.id)
       setMyRank(myIndex >= 0 ? myIndex + 1 : null)
 
@@ -229,7 +218,6 @@ export default function PredictionsLeaderboardPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* Filtres */}
         <div className="flex justify-center gap-4 mb-8">
           <button
             onClick={() => setFilter('season')}
@@ -263,15 +251,13 @@ export default function PredictionsLeaderboardPage() {
           </div>
         ) : (
           <>
-            {/* Podium (Top 3) */}
             {leaderboard.length >= 3 && (
               <div className="grid grid-cols-3 gap-4 mb-8 max-w-4xl mx-auto">
-                {/* 2ème place */}
                 <div className="flex flex-col items-center pt-12">
                   <div className="bg-gradient-to-br from-gray-400 to-gray-600 p-1 rounded-full mb-3">
                     <div className="w-20 h-20 rounded-full bg-slate-900 flex items-center justify-center overflow-hidden">
                       {leaderboard[1].avatar_url ? (
-                        <img src={leaderboard[1].avatar_url} alt="" className="w-full h-full object-cover" />
+                        <Image src={leaderboard[1].avatar_url} alt="" width={80} height={80} className="w-full h-full object-cover" />
                       ) : (
                         <span className="text-white text-2xl font-bold">
                           {leaderboard[1].player_name[0].toUpperCase()}
@@ -285,12 +271,11 @@ export default function PredictionsLeaderboardPage() {
                   <p className="text-gray-500 text-sm">{leaderboard[1].total_correct}/{leaderboard[1].total_predictions * 2}</p>
                 </div>
 
-                {/* 1ère place */}
                 <div className="flex flex-col items-center">
                   <div className="bg-gradient-to-br from-yellow-400 to-orange-500 p-1 rounded-full mb-3">
                     <div className="w-24 h-24 rounded-full bg-slate-900 flex items-center justify-center overflow-hidden">
                       {leaderboard[0].avatar_url ? (
-                        <img src={leaderboard[0].avatar_url} alt="" className="w-full h-full object-cover" />
+                        <Image src={leaderboard[0].avatar_url} alt="" width={96} height={96} className="w-full h-full object-cover" />
                       ) : (
                         <span className="text-white text-3xl font-bold">
                           {leaderboard[0].player_name[0].toUpperCase()}
@@ -304,12 +289,11 @@ export default function PredictionsLeaderboardPage() {
                   <p className="text-gray-500 text-sm">{leaderboard[0].total_correct}/{leaderboard[0].total_predictions * 2}</p>
                 </div>
 
-                {/* 3ème place */}
                 <div className="flex flex-col items-center pt-16">
                   <div className="bg-gradient-to-br from-orange-600 to-red-600 p-1 rounded-full mb-3">
                     <div className="w-20 h-20 rounded-full bg-slate-900 flex items-center justify-center overflow-hidden">
                       {leaderboard[2].avatar_url ? (
-                        <img src={leaderboard[2].avatar_url} alt="" className="w-full h-full object-cover" />
+                        <Image src={leaderboard[2].avatar_url} alt="" width={80} height={80} className="w-full h-full object-cover" />
                       ) : (
                         <span className="text-white text-2xl font-bold">
                           {leaderboard[2].player_name[0].toUpperCase()}
@@ -325,7 +309,6 @@ export default function PredictionsLeaderboardPage() {
               </div>
             )}
 
-            {/* Classement complet */}
             <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-6">
               <h3 className="text-xl font-bold text-white mb-4">Classement complet</h3>
               
@@ -351,7 +334,7 @@ export default function PredictionsLeaderboardPage() {
                       
                       <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center overflow-hidden">
                         {player.avatar_url ? (
-                          <img src={player.avatar_url} alt="" className="w-full h-full object-cover" />
+                          <Image src={player.avatar_url} alt="" width={48} height={48} className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-white font-bold">
                             {player.player_name[0].toUpperCase()}
@@ -387,7 +370,6 @@ export default function PredictionsLeaderboardPage() {
               </div>
             </div>
 
-            {/* Mon rang */}
             {myRank && (
               <div className="mt-6 bg-blue-900/30 border border-blue-500/30 rounded-xl p-4 text-center">
                 <p className="text-blue-300">

@@ -72,14 +72,12 @@ export default function PlayerProfilePage() {
     if (!file) return
 
     try {
-      // Créer une preview locale
       const reader = new FileReader()
       reader.onloadend = () => {
         setPreviewUrl(reader.result as string)
       }
       reader.readAsDataURL(file)
 
-      // Upload vers Supabase Storage
       const fileExt = file.name.split('.').pop()
       const fileName = `${userId}-${Math.random()}.${fileExt}`
       const filePath = `avatars/${fileName}`
@@ -90,7 +88,6 @@ export default function PlayerProfilePage() {
 
       if (uploadError) throw uploadError
 
-      // Récupérer l'URL publique
       const { data: urlData } = supabase.storage
         .from('player-avatars')
         .getPublicUrl(filePath)
@@ -159,12 +156,11 @@ export default function PlayerProfilePage() {
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-8">
           
-          {/* Photo de profil */}
           <div className="flex flex-col items-center mb-8">
             <div className="relative">
               <div className="w-32 h-32 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center overflow-hidden">
                 {previewUrl ? (
-                  <img src={previewUrl} alt="Avatar" className="w-full h-full object-cover" />
+                  <Image src={previewUrl} alt="Avatar" width={128} height={128} className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-white text-4xl font-bold">
                     {profile.first_name ? profile.first_name[0].toUpperCase() : '?'}
@@ -184,9 +180,7 @@ export default function PlayerProfilePage() {
             <p className="text-gray-400 text-sm mt-2">Cliquez pour changer la photo</p>
           </div>
 
-          {/* Formulaire */}
           <div className="space-y-4">
-            {/* Prénom */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Prénom
@@ -200,7 +194,6 @@ export default function PlayerProfilePage() {
               />
             </div>
 
-            {/* Nom */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Nom
@@ -214,7 +207,6 @@ export default function PlayerProfilePage() {
               />
             </div>
 
-            {/* Surnom */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Surnom <span className="text-gray-500">(optionnel)</span>
@@ -231,7 +223,6 @@ export default function PlayerProfilePage() {
               </p>
             </div>
 
-            {/* Numéro */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Numéro de maillot <span className="text-gray-500">(optionnel)</span>
@@ -247,7 +238,6 @@ export default function PlayerProfilePage() {
               />
             </div>
 
-            {/* Email (lecture seule) */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Email
@@ -264,7 +254,6 @@ export default function PlayerProfilePage() {
             </div>
           </div>
 
-          {/* Bouton de sauvegarde */}
           <button
             onClick={handleSave}
             disabled={saving}

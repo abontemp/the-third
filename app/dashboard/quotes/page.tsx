@@ -23,7 +23,6 @@ export default function MemorableQuotesPage() {
   const [loading, setLoading] = useState(true)
   const [quotes, setQuotes] = useState<QuoteType[]>([])
   const [filter, setFilter] = useState<'all' | 'top' | 'flop'>('all')
-  const [selectedTeam, setSelectedTeam] = useState<string | null>(null)
 
   useEffect(() => {
     loadQuotes()
@@ -50,8 +49,6 @@ export default function MemorableQuotesPage() {
         router.push('/dashboard')
         return
       }
-
-      setSelectedTeam(membership.team_id)
 
       // Récupérer toutes les citations de l'équipe
       const { data: quotesData } = await supabase
