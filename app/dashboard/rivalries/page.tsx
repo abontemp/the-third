@@ -48,21 +48,6 @@ export default function RivalriesPage() {
         router.push('/login')
         return
       }
-      
-      setUserId(user.id)
-
-      // Récupérer mon profil
-      const { data: myProfile } = await supabase
-        .from('profiles')
-        .select('first_name, last_name, nickname')
-        .eq('id', user.id)
-        .single()
-
-      const displayName = myProfile?.nickname || 
-                         (myProfile?.first_name && myProfile?.last_name 
-                           ? `${myProfile.first_name} ${myProfile.last_name}` 
-                           : 'Vous')
-      setMyName(displayName)
 
       // Récupérer mon équipe
       const { data: membership } = await supabase
