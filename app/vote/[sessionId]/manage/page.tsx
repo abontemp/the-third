@@ -3,26 +3,20 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { 
-  ArrowLeft, CheckCircle, Clock, 
-  Loader, AlertCircle, Play, XCircle, ThumbsDown, Trophy
-} from 'lucide-react'
+import { ArrowLeft, Loader, CheckCircle, Clock, Share2, Copy, MessageCircle, Mail, Users, Trophy, ThumbsDown, Play, XCircle, AlertCircle } from 'lucide-react'
 
 type Participant = {
-  id: string
   user_id: string
+  display_name: string
   has_voted: boolean
 }
 
 type VotingSession = {
   id: string
   status: string
-  flop_reader_id?: string    // DÉPLACE ICI (en dehors de match)
-  top_reader_id?: string     // DÉPLACE ICI (en dehors de match)
   match: {
     opponent: string
     match_date: string
-    location?: string
   }
 }
 
@@ -30,77 +24,46 @@ export default function ManageVotePage() {
   const router = useRouter()
   const params = useParams()
   const sessionId = params.sessionId as string
+  const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
-  const [closing, setClosing] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-
   const [session, setSession] = useState<VotingSession | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
-  const [isManager, setIsManager] = useState(false)
-useEffect(() => {
-  loadSessionData()
+  const [copySuccess, setCopySuccess] = useState(false)
+  const [closing, setClosing] = useState(false)
 
-  // Rafraîchir toutes les 5 secondes pour voir les votes en temps réel
-  const interval = setInterval(() => {
-    loadSessionData()
-  }, 5000)
+  // Construire l'URL complète du vote
+  const voteUrl = typeof window !== 'undefined' 
+    ? `${window.location.origin}/vote/${sessionId}/predict`
+    : ''
 
-  return () => clearInterval(interval)
-}, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    loadData()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-// Charger les noms des lecteurs si la session est en lecture
-useEffect(() => {
-  const loadReaders = async () => {
-    if (session?.status === 'reading') {
-      const supabase = createClient()
-      const readerIds = [session.flop_reader_id, session.top_reader_id].filter(Boolean)
-      
-      if (readerIds.length > 0) {
-        const { data: readersProfiles } = await supabase
-          .from('profiles')
-          .select('id, first_name, last_name, email')
-          .in('id', readerIds)
-        
-        // Tu peux stocker ça dans un state pour l'afficher
-        console.log('Lecteurs:', readersProfiles)
-      }
-    }
-  }
-  
-  if (session) {
-    loadReaders()
-  }
-}, [session])
-
-const loadSessionData = async () => {
+  const loadData = async () => {
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) {
-        router.push('/login')
-        return
-      }
+      setLoading(true)
 
       // Charger la session
-      const { data: sessionData, error: sessionError } = await supabase
+      const { data: sessionData } = await supabase
         .from('voting_sessions')
         .select(`
           id,
           status,
-          match_id,
           matches (
             opponent,
-            match_date,
-            location
+            match_date
           )
         `)
         .eq('id', sessionId)
         .single()
 
-      if (sessionError) throw sessionError
+      if (!sessionData) {
+        alert('Session introuvable')
+        router.push('/dashboard')
+        return
+      }
 
       const matchData = Array.isArray(sessionData.matches) 
         ? sessionData.matches[0] 
@@ -111,102 +74,103 @@ const loadSessionData = async () => {
         status: sessionData.status,
         match: {
           opponent: matchData?.opponent || '',
-          match_date: matchData?.match_date || '',
-          location: matchData?.location
+          match_date: matchData?.match_date || ''
         }
       })
-
-      // Vérifier si l'utilisateur est manager
-      const { data: matchData2 } = await supabase
-        .from('matches')
-        .select('season_id')
-        .eq('id', sessionData.match_id)
-        .single()
-
-      if (matchData2) {
-        const { data: seasonData } = await supabase
-          .from('seasons')
-          .select('team_id')
-          .eq('id', matchData2.season_id)
-          .single()
-
-        if (seasonData) {
-          const { data: memberData } = await supabase
-            .from('team_members')
-            .select('role')
-            .eq('team_id', seasonData.team_id)
-            .eq('user_id', user.id)
-            .single()
-
-          setIsManager(memberData?.role === 'creator' || memberData?.role === 'manager')
-        }
-      }
 
       // Charger les participants
       const { data: participantsData } = await supabase
         .from('session_participants')
-        .select('id, user_id, has_voted')
+        .select('user_id, has_voted')
         .eq('session_id', sessionId)
 
-      setParticipants(participantsData || [])
+      if (participantsData) {
+        const userIds = participantsData.map(p => p.user_id)
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, nickname')
+          .in('id', userIds)
+
+        const profilesMap: Record<string, string> = {}
+        profiles?.forEach(p => {
+          profilesMap[p.id] = p.nickname || 
+                             (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8))
+        })
+
+        setParticipants(participantsData.map(p => ({
+          user_id: p.user_id,
+          display_name: profilesMap[p.user_id] || 'Inconnu',
+          has_voted: p.has_voted
+        })))
+      }
 
     } catch (err) {
       console.error('Erreur:', err)
-      setError('Erreur lors du chargement')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCloseSession = async () => {
-    if (!confirm('Êtes-vous sûr de vouloir clôturer cette session de vote ? Cette action est irréversible.')) {
-      return
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(voteUrl)
+      setCopySuccess(true)
+      setTimeout(() => setCopySuccess(false), 3000)
+    } catch (err) {
+      console.error('Erreur copie:', err)
+      alert('Impossible de copier le lien')
     }
+  }
 
-    setClosing(true)
-    setError('')
+  const shareViaWhatsApp = () => {
+    const message = encodeURIComponent(`🏑 Nouveau vote disponible !\n\nVotez pour le TOP et FLOP du match contre ${session?.match.opponent} :\n${voteUrl}`)
+    window.open(`https://wa.me/?text=${message}`, '_blank')
+  }
+
+  const shareViaEmail = () => {
+    const subject = encodeURIComponent(`Vote pour le match contre ${session?.match.opponent}`)
+    const body = encodeURIComponent(`Bonjour,\n\nUn nouveau vote est disponible pour le match contre ${session?.match.opponent}.\n\nVotez ici : ${voteUrl}\n\nMerci !`)
+    window.location.href = `mailto:?subject=${subject}&body=${body}`
+  }
+
+  const handleCloseVote = async () => {
+    if (!confirm('Êtes-vous sûr de vouloir clôturer le vote ?')) return
 
     try {
-      const supabase = createClient()
+      setClosing(true)
 
-      // Récupérer tous les votes
-      const { data: votes } = await supabase
-        .from('votes')
-        .select('voter_id')
-        .eq('session_id', sessionId)
-
-      if (!votes || votes.length < 2) {
-        setError('Il faut au moins 2 votes pour clôturer la session')
+      // Sélectionner aléatoirement 2 lecteurs parmi ceux qui ont voté
+      const voters = participants.filter(p => p.has_voted)
+      
+      if (voters.length < 2) {
+        alert('Il faut au moins 2 personnes ayant voté pour clôturer')
         setClosing(false)
         return
       }
 
-      // Sélectionner aléatoirement 2 lecteurs parmi ceux qui ont voté
-      const shuffled = [...votes].sort(() => 0.5 - Math.random())
-      const flopReaderId = shuffled[0].voter_id
-      const topReaderId = shuffled[1].voter_id
+      const shuffled = [...voters].sort(() => Math.random() - 0.5)
+      const topReader = shuffled[0]
+      const flopReader = shuffled[1]
 
       // Mettre à jour la session
-      const { error: updateError } = await supabase
+      const { error } = await supabase
         .from('voting_sessions')
-        .update({ 
+        .update({
           status: 'reading',
-          flop_reader_id: flopReaderId,
-          top_reader_id: topReaderId
+          top_reader_id: topReader.user_id,
+          flop_reader_id: flopReader.user_id
         })
         .eq('id', sessionId)
 
-      if (updateError) throw updateError
+      if (error) throw error
 
-      setSuccess('Session clôturée ! Lancement de la lecture...')
+      alert(`Vote clôturé !\n\nLecteur TOP : ${topReader.display_name}\nLecteur FLOP : ${flopReader.display_name}`)
       
-      setTimeout(() => {
-        router.push(`/vote/${sessionId}/reading`)
-      }, 1500)
+      loadData()
 
-    } catch (err: unknown) {
+    } catch (err) {
       console.error('Erreur:', err)
-      setError(err instanceof Error ? err.message : 'Erreur lors de la clôture')
+      alert('Erreur lors de la clôture du vote')
     } finally {
       setClosing(false)
     }
@@ -220,216 +184,215 @@ const loadSessionData = async () => {
     )
   }
 
-  if (!isManager) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-8 max-w-md text-center">
-          <XCircle className="text-red-400 mx-auto mb-4" size={64} />
-          <h2 className="text-2xl font-bold text-white mb-2">Accès refusé</h2>
-          <p className="text-gray-300 mb-6">Seuls les managers peuvent gérer les votes.</p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
-          >
-            Retour au dashboard
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   const votedCount = participants.filter(p => p.has_voted).length
   const totalCount = participants.length
-  const percentage = totalCount > 0 ? Math.round((votedCount / totalCount) * 100) : 0
+  const allVoted = votedCount === totalCount && totalCount > 0
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <button
               onClick={() => router.push('/dashboard')}
               className="flex items-center gap-2 text-gray-400 hover:text-white transition"
             >
               <ArrowLeft size={20} />
-              <span>Retour</span>
+              <span>Retour au dashboard</span>
             </button>
-
-            <div className="text-right">
-              <h2 className="text-white font-semibold">{session?.match.opponent}</h2>
-              <p className="text-gray-400 text-sm">
-                {session?.match.match_date && new Date(session.match.match_date).toLocaleDateString('fr-FR')}
-              </p>
-            </div>
+            <h1 className="text-xl font-bold text-white">Gestion du vote</h1>
           </div>
         </div>
       </header>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Gestion du vote</h1>
-          <p className="text-gray-400">Suivez l&apos;avancement et clôturez quand vous êtes prêt</p>
-        </div>
-
-        {error && (
-          <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-start gap-3">
-            <AlertCircle className="text-red-400" size={20} />
-            <p className="text-red-300 text-sm">{error}</p>
+        
+        {/* Info du match */}
+        {session && (
+          <div className="bg-blue-900/30 border border-blue-500/30 rounded-xl p-4 mb-6 text-center">
+            <p className="text-blue-400 text-lg">
+              Match contre <span className="font-bold text-white">{session.match.opponent}</span>
+            </p>
+            <p className="text-gray-400 text-sm">
+              {new Date(session.match.match_date).toLocaleDateString('fr-FR', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+              })}
+            </p>
           </div>
         )}
 
-        {success && (
-          <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-lg p-4 flex items-start gap-3">
-            <CheckCircle className="text-green-400" size={20} />
-            <p className="text-green-300 text-sm">{success}</p>
-          </div>
-        )}
-
-        {/* Progression */}
-        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-8 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-white">Progression des votes</h2>
-            <div className="text-right">
-              <p className="text-3xl font-bold text-white">{votedCount}/{totalCount}</p>
-              <p className="text-sm text-gray-400">{percentage}% complété</p>
+        {/* Section de partage */}
+        <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-2xl p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Share2 className="text-green-400" size={32} />
+            <div>
+              <h2 className="text-2xl font-bold text-white">Partager le vote</h2>
+              <p className="text-gray-400 text-sm">Envoyez le lien aux participants</p>
             </div>
           </div>
 
-          <div className="w-full bg-slate-700/50 rounded-full h-4 mb-6 overflow-hidden">
-            <div 
-              className="bg-gradient-to-r from-blue-500 to-purple-500 h-4 rounded-full transition-all duration-500"
-              style={{ width: `${percentage}%` }}
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <button
+              onClick={copyToClipboard}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+            >
+              {copySuccess ? (
+                <>
+                  <CheckCircle size={20} />
+                  Copié !
+                </>
+              ) : (
+                <>
+                  <Copy size={20} />
+                  Copier le lien
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={shareViaWhatsApp}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+            >
+              <MessageCircle size={20} />
+              WhatsApp
+            </button>
+
+            <button
+              onClick={shareViaEmail}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+            >
+              <Mail size={20} />
+              Email
+            </button>
           </div>
 
-          <div className="space-y-3">
-            {participants.map((participant, index) => (
+          <div className="mt-4 bg-slate-800/50 rounded-lg p-3 flex items-center gap-2">
+            <input
+              type="text"
+              value={voteUrl}
+              readOnly
+              className="flex-1 bg-transparent text-gray-300 text-sm outline-none"
+              onClick={(e) => (e.target as HTMLInputElement).select()}
+            />
+            <button
+              onClick={copyToClipboard}
+              className="text-blue-400 hover:text-blue-300 transition"
+            >
+              <Copy size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* État du vote */}
+        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+              <Users size={24} />
+              Participants ({votedCount}/{totalCount})
+            </h3>
+            
+            {allVoted && (
+              <div className="bg-green-500/20 border border-green-500/30 rounded-lg px-4 py-2">
+                <p className="text-green-300 text-sm font-semibold">✅ Tout le monde a voté</p>
+              </div>
+            )}
+          </div>
+
+          {/* Barre de progression */}
+          <div className="mb-6">
+            <div className="flex justify-between text-sm text-gray-400 mb-2">
+              <span>Progression</span>
+              <span>{totalCount > 0 ? Math.round((votedCount / totalCount) * 100) : 0}%</span>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-3">
               <div 
-                key={participant.id}
-                className={`flex items-center justify-between p-4 rounded-lg border ${
+                className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all duration-500"
+                style={{ width: `${totalCount > 0 ? (votedCount / totalCount) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Liste des participants */}
+          <div className="space-y-2">
+            {participants.map((participant) => (
+              <div 
+                key={participant.user_id}
+                className={`flex items-center justify-between p-3 rounded-lg ${
                   participant.has_voted 
-                    ? 'bg-green-500/10 border-green-500/30' 
-                    : 'bg-slate-700/30 border-white/10'
+                    ? 'bg-green-500/10 border border-green-500/30' 
+                    : 'bg-slate-700/30 border border-white/10'
                 }`}
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                    {participant.user_id.substring(0, 2).toUpperCase()}
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    participant.has_voted 
+                      ? 'bg-green-600' 
+                      : 'bg-slate-600'
+                  }`}>
+                    {participant.has_voted ? (
+                      <CheckCircle className="text-white" size={20} />
+                    ) : (
+                      <Clock className="text-gray-400" size={20} />
+                    )}
                   </div>
                   <div>
-                    <p className="text-white font-medium">Participant #{index + 1}</p>
-                    <p className="text-sm text-gray-400">
-                      {participant.user_id.substring(0, 12)}...
+                    <p className="text-white font-medium">{participant.display_name}</p>
+                    <p className={`text-sm ${
+                      participant.has_voted ? 'text-green-400' : 'text-gray-400'
+                    }`}>
+                      {participant.has_voted ? 'A voté' : 'En attente'}
                     </p>
                   </div>
                 </div>
-
-                {participant.has_voted ? (
-                  <div className="flex items-center gap-2 text-green-400">
-                    <CheckCircle size={20} />
-                    <span className="text-sm font-medium">A voté</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-orange-400">
-                    <Clock size={20} />
-                    <span className="text-sm font-medium">En attente</span>
-                  </div>
-                )}
               </div>
             ))}
           </div>
         </div>
 
-{/* Actions */}
-<div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-2xl p-8">
-  <h2 className="text-2xl font-bold text-white mb-4">Actions</h2>
-  
-  {session?.status === 'reading' ? (
-    // Afficher les lecteurs désignés
-    <div className="space-y-4">
-      <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-6">
-        <h3 className="text-xl font-bold text-white mb-4">🎉 Vote clôturé !</h3>
-        <p className="text-gray-300 mb-4">Les lecteurs ont été désignés :</p>
-        
-        <div className="space-y-3">
-          <div className="bg-slate-800/50 rounded-lg p-4 border border-orange-500/30">
-            <div className="flex items-center gap-3">
-              <ThumbsDown className="text-orange-400" size={24} />
+        {/* Bouton de clôture */}
+        {session?.status === 'open' && (
+          <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-2xl p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertCircle className="text-orange-400 flex-shrink-0 mt-1" size={24} />
               <div>
-                <p className="text-sm text-gray-400">Lecteur des votes FLOP</p>
-                <p className="text-white font-semibold">
-                  {/* On affichera le nom du lecteur */}
-                  Lecteur FLOP
+                <h3 className="text-xl font-bold text-white mb-2">Clôturer le vote</h3>
+                <p className="text-gray-400 text-sm">
+                  Une fois clôturé, les lecteurs seront sélectionnés aléatoirement parmi les votants.
+                  Il faut au moins 2 personnes ayant voté.
                 </p>
               </div>
             </div>
+
+            <button
+              onClick={handleCloseVote}
+              disabled={closing || votedCount < 2}
+              className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white py-4 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {closing ? (
+                <>
+                  <Loader className="animate-spin" size={20} />
+                  Clôture en cours...
+                </>
+              ) : (
+                <>
+                  <Play size={20} />
+                  Clôturer le vote
+                </>
+              )}
+            </button>
           </div>
-
-          <div className="bg-slate-800/50 rounded-lg p-4 border border-blue-500/30">
-            <div className="flex items-center gap-3">
-              <Trophy className="text-blue-400" size={24} />
-              <div>
-                <p className="text-sm text-gray-400">Lecteur des votes TOP</p>
-                <p className="text-white font-semibold">
-                  {/* On affichera le nom du lecteur */}
-                  Lecteur TOP
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <p className="text-gray-400 text-sm mt-4">
-ℹ️ Prévenez ces personnes qu&apos;elles doivent commencer la lecture depuis leur dashboard.
-        </p>
-      </div>
-
-      <button
-        onClick={() => router.push('/dashboard')}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-lg font-semibold transition"
-      >
-        Retour au dashboard
-      </button>
-    </div>
-  ) : (
-    // Bouton de clôture (code existant)
-    <div className="space-y-4">
-      <div className="bg-slate-800/50 rounded-lg p-4 border border-white/10">
-        <p className="text-gray-300 text-sm mb-2">
-          ℹ️ Lorsque vous clôturez le vote, le système sélectionnera automatiquement 2 lecteurs parmi ceux qui ont voté :
-        </p>
-        <ul className="text-gray-400 text-sm list-disc list-inside space-y-1">
-          <li>1 lecteur pour les votes FLOP</li>
-          <li>1 lecteur pour les votes TOP</li>
-        </ul>
-      </div>
-
-      <button
-        onClick={handleCloseSession}
-        disabled={closing || votedCount < 2}
-        className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-      >
-        {closing ? (
-          <>
-            <Loader className="animate-spin" size={20} />
-            <span>Clôture en cours...</span>
-          </>
-        ) : (
-          <>
-            <Play size={20} />
-            <span>Clôturer et désigner les lecteurs</span>
-          </>
         )}
-      </button>
 
-      {votedCount < 2 && (
-        <p className="text-center text-sm text-orange-400">
-          Attendez au moins 2 votes pour clôturer la session
-        </p>
-      )}
-    </div>
-  )}
-</div>
+        {session?.status === 'reading' && (
+          <div className="bg-purple-900/30 border border-purple-500/30 rounded-xl p-6 text-center">
+            <Trophy className="mx-auto mb-3 text-purple-400" size={48} />
+            <h3 className="text-2xl font-bold text-white mb-2">Vote clôturé</h3>
+            <p className="text-gray-400">Les lecteurs peuvent maintenant lire les votes</p>
+          </div>
+        )}
       </div>
     </div>
   )
