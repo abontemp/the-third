@@ -20,11 +20,13 @@ export default function CreateMatchPage() {
   
   const [seasons, setSeasons] = useState<Season[]>([])
   
+  // Date par défaut = aujourd'hui
+  const today = new Date().toISOString().split('T')[0]
+  
   const [formData, setFormData] = useState({
     seasonId: '',
     opponent: '',
-    matchDate: '',
-    location: ''
+    matchDate: today
   })
 
   useEffect(() => {
@@ -41,7 +43,6 @@ export default function CreateMatchPage() {
         return
       }
 
-      // Récupérer l'équipe de l'utilisateur
       const { data: memberships } = await supabase
         .from('team_members')
         .select('team_id, role')
@@ -60,7 +61,6 @@ export default function CreateMatchPage() {
         return
       }
 
-      // Charger les saisons actives
       const { data: seasonsData } = await supabase
         .from('seasons')
         .select('id, name, is_active')
@@ -69,15 +69,15 @@ export default function CreateMatchPage() {
 
       setSeasons(seasonsData || [])
 
-      // Si pas de saison, en créer une par défaut
       if (!seasonsData || seasonsData.length === 0) {
         const { data: newSeason } = await supabase
           .from('seasons')
           .insert([{
             team_id: membership.team_id,
             name: `Saison ${new Date().getFullYear()}`,
-            start_date: new Date().toISOString().split('T')[0],
-            is_active: true
+            start_date: today,
+            is_active: true,
+            is_current: true
           }])
           .select()
           .single()
@@ -103,10 +103,6 @@ export default function CreateMatchPage() {
       setError("Le nom de l'adversaire est obligatoire")
       return
     }
-    if (!formData.matchDate) {
-      setError("La date du match est obligatoire")
-      return
-    }
 
     setSubmitting(true)
     setError('')
@@ -114,14 +110,12 @@ export default function CreateMatchPage() {
     try {
       const supabase = createClient()
 
-      // Créer le match uniquement
       const { data: match, error: matchError } = await supabase
         .from('matches')
         .insert([{
           season_id: formData.seasonId,
           opponent: formData.opponent,
           match_date: formData.matchDate,
-          location: formData.location || null,
           status: 'scheduled'
         }])
         .select()
@@ -133,7 +127,7 @@ export default function CreateMatchPage() {
       
       setTimeout(() => {
         router.push(`/dashboard/matches/${match.id}/vote/create`)
-      }, 1500)
+      }, 1000)
 
     } catch (err: unknown) {
       console.error('Erreur:', err)
@@ -167,10 +161,10 @@ export default function CreateMatchPage() {
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-8">
           <h1 className="text-3xl font-bold text-white mb-2">Créer un match</h1>
-          <p className="text-gray-400 mb-8">Étape 1/2 : Informations du match</p>
+          <p className="text-gray-400 mb-8">Renseignez les informations du match</p>
 
           {error && (
             <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-start gap-3">
@@ -187,68 +181,55 @@ export default function CreateMatchPage() {
           )}
 
           <div className="space-y-6">
-            <div className="space-y-4">
-              {seasons.length > 1 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Saison
-                  </label>
-                  <select
-                    value={formData.seasonId}
-                    onChange={(e) => setFormData({ ...formData, seasonId: e.target.value })}
-                    className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
-                  >
-                    {seasons.map(season => (
-                      <option key={season.id} value={season.id}>{season.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
+            {seasons.length > 1 && (
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Adversaire *
+                  Saison
                 </label>
-                <input
-                  type="text"
-                  value={formData.opponent}
-                  onChange={(e) => setFormData({ ...formData, opponent: e.target.value })}
+                <select
+                  value={formData.seasonId}
+                  onChange={(e) => setFormData({ ...formData, seasonId: e.target.value })}
                   className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
-                  placeholder="FC Exemple"
-                />
+                >
+                  {seasons.map(season => (
+                    <option key={season.id} value={season.id}>{season.name}</option>
+                  ))}
+                </select>
               </div>
+            )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Date du match *
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={formData.matchDate}
-                    onChange={(e) => setFormData({ ...formData, matchDate: e.target.value })}
-                    className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
-                  />
-                </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Nom de l&apos;adversaire *
+              </label>
+              <input
+                type="text"
+                value={formData.opponent}
+                onChange={(e) => setFormData({ ...formData, opponent: e.target.value })}
+                className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
+                placeholder="Ex: Racing Club Bruxelles"
+                autoFocus
+              />
+            </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Lieu (optionnel)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
-                    placeholder="Stade municipal"
-                  />
-                </div>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Date du match
+              </label>
+              <input
+                type="date"
+                value={formData.matchDate}
+                onChange={(e) => setFormData({ ...formData, matchDate: e.target.value })}
+                className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
+              />
+              <p className="text-gray-500 text-xs mt-1">
+                Par défaut : aujourd&apos;hui
+              </p>
             </div>
 
             <button
               onClick={handleSubmit}
-              disabled={submitting || !formData.opponent || !formData.matchDate}
+              disabled={submitting || !formData.opponent}
               className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {submitting ? (
@@ -259,7 +240,7 @@ export default function CreateMatchPage() {
               ) : (
                 <>
                   <Send size={20} />
-                  <span>Créer le match et continuer</span>
+                  <span>Continuer vers la sélection des participants</span>
                 </>
               )}
             </button>
