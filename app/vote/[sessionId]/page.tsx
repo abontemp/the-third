@@ -63,7 +63,7 @@ export default function VotePage() {
       console.log('✅ [VOTE PAGE] Utilisateur connecté:', user.id)
       setCurrentUserId(user.id)
 
-      // CORRECTION : Charger la session sans la relation matches
+      // Charger la session
       const { data: sessionData, error: sessionError } = await supabase
         .from('voting_sessions')
         .select('id, status, match_id')
@@ -93,10 +93,10 @@ export default function VotePage() {
         return
       }
 
-      // CORRECTION : Charger le match séparément
+      // Charger le match (avec season_id au lieu de team_id)
       const { data: matchData, error: matchError } = await supabase
         .from('matches')
-        .select('id, opponent, match_date, team_id')
+        .select('id, opponent, match_date, season_id')
         .eq('id', sessionData.match_id)
         .single()
 
@@ -109,13 +109,30 @@ export default function VotePage() {
 
       console.log('✅ [VOTE PAGE] Match:', matchData)
 
+      // Charger la saison pour obtenir le team_id
+      const { data: seasonData, error: seasonError } = await supabase
+        .from('seasons')
+        .select('team_id')
+        .eq('id', matchData.season_id)
+        .single()
+
+      if (seasonError || !seasonData) {
+        console.error('❌ [VOTE PAGE] Erreur saison:', seasonError)
+        alert('Saison introuvable')
+        router.push('/dashboard')
+        return
+      }
+
+      console.log('✅ [VOTE PAGE] Saison:', seasonData)
+
       setMatchInfo({
         id: matchData.id,
         opponent: matchData.opponent || '',
         match_date: matchData.match_date || '',
-        team_id: matchData.team_id
+        team_id: seasonData.team_id
       })
 
+      // Charger les membres de l'équipe
       const { data: teamMembers, error: membersError } = await supabase
         .from('team_members')
         .select(`
@@ -127,7 +144,7 @@ export default function VotePage() {
             email
           )
         `)
-        .eq('team_id', matchData.team_id)
+        .eq('team_id', seasonData.team_id)
         .eq('status', 'accepted')
 
       if (membersError) {
@@ -159,6 +176,7 @@ export default function VotePage() {
       console.log('✅ [VOTE PAGE] Liste finale des joueurs:', playersList.length)
       setPlayers(playersList)
 
+      // Charger le vote existant si présent
       const { data: existingVote } = await supabase
         .from('votes')
         .select('*')
