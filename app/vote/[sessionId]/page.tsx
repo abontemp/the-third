@@ -48,44 +48,75 @@ export default function VotePage() {
 
   useEffect(() => {
     loadVotingData()
-  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadVotingData = async () => {
     try {
+      console.log('🔵 [VOTE PAGE] Début du chargement pour session:', sessionId)
+      
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
+        console.log('❌ [VOTE PAGE] Pas d\'utilisateur connecté')
         router.push('/login')
         return
       }
+      console.log('✅ [VOTE PAGE] Utilisateur connecté:', user.id)
       setCurrentUserId(user.id)
 
-      const { data: sessionData } = await supabase
+      // CORRECTION : Charger la session sans la relation matches
+      const { data: sessionData, error: sessionError } = await supabase
         .from('voting_sessions')
-        .select(`
-          id,
-          status,
-          matches (
-            id,
-            opponent,
-            match_date,
-            team_id
-          )
-        `)
+        .select('id, status, match_id')
         .eq('id', sessionId)
         .single()
 
-      if (!sessionData || sessionData.status !== 'open') {
+      if (sessionError) {
+        console.error('❌ [VOTE PAGE] Erreur session:', sessionError)
+        alert('Session de vote introuvable')
         router.push('/dashboard')
         return
       }
 
-      const match = Array.isArray(sessionData.matches) 
-        ? sessionData.matches[0] 
-        : sessionData.matches
+      console.log('✅ [VOTE PAGE] Session trouvée:', sessionData)
 
-      setMatchInfo(match as MatchInfo)
+      if (!sessionData) {
+        console.log('❌ [VOTE PAGE] Session null')
+        alert('Session de vote introuvable')
+        router.push('/dashboard')
+        return
+      }
 
-      const { data: teamMembers } = await supabase
+      if (sessionData.status !== 'open') {
+        console.log('⚠️ [VOTE PAGE] Session non ouverte (status:', sessionData.status, ')')
+        alert('Cette session de vote n\'est plus ouverte')
+        router.push('/dashboard')
+        return
+      }
+
+      // CORRECTION : Charger le match séparément
+      const { data: matchData, error: matchError } = await supabase
+        .from('matches')
+        .select('id, opponent, match_date, team_id')
+        .eq('id', sessionData.match_id)
+        .single()
+
+      if (matchError || !matchData) {
+        console.error('❌ [VOTE PAGE] Erreur match:', matchError)
+        alert('Match introuvable')
+        router.push('/dashboard')
+        return
+      }
+
+      console.log('✅ [VOTE PAGE] Match:', matchData)
+
+      setMatchInfo({
+        id: matchData.id,
+        opponent: matchData.opponent || '',
+        match_date: matchData.match_date || '',
+        team_id: matchData.team_id
+      })
+
+      const { data: teamMembers, error: membersError } = await supabase
         .from('team_members')
         .select(`
           user_id,
@@ -96,14 +127,19 @@ export default function VotePage() {
             email
           )
         `)
-        .eq('team_id', match.team_id)
+        .eq('team_id', matchData.team_id)
         .eq('status', 'accepted')
 
+      if (membersError) {
+        console.error('❌ [VOTE PAGE] Erreur membres:', membersError)
+      }
+
+      console.log('✅ [VOTE PAGE] Membres récupérés:', teamMembers?.length || 0)
+
       const playersList: Player[] = (teamMembers as TeamMemberResponse[])?.map((member) => {
-        // Gérer le cas où profiles peut être un tableau ou un objet
-        const profile = Array.isArray(member.profiles) 
-          ? member.profiles[0] 
-          : member.profiles
+        const profile = member.profiles
+          ? (Array.isArray(member.profiles) ? member.profiles[0] : member.profiles)
+          : null
 
         if (!profile) {
           return {
@@ -120,6 +156,7 @@ export default function VotePage() {
         }
       }) || []
 
+      console.log('✅ [VOTE PAGE] Liste finale des joueurs:', playersList.length)
       setPlayers(playersList)
 
       const { data: existingVote } = await supabase
@@ -127,18 +164,23 @@ export default function VotePage() {
         .select('*')
         .eq('session_id', sessionId)
         .eq('voter_id', user.id)
-        .single()
+        .maybeSingle()
 
       if (existingVote) {
+        console.log('✅ [VOTE PAGE] Vote existant trouvé')
         setTopPlayerId(existingVote.top_player_id || '')
         setFlopPlayerId(existingVote.flop_player_id || '')
         setTopComment(existingVote.top_comment || '')
         setFlopComment(existingVote.flop_comment || '')
+      } else {
+        console.log('ℹ️ [VOTE PAGE] Pas de vote existant')
       }
 
+      console.log('✅ [VOTE PAGE] Chargement terminé avec succès')
       setLoading(false)
     } catch (error) {
-      console.error('Erreur:', error)
+      console.error('❌ [VOTE PAGE] Erreur générale:', error)
+      alert('Une erreur est survenue')
       setLoading(false)
     }
   }
@@ -156,16 +198,18 @@ export default function VotePage() {
 
     try {
       setSubmitting(true)
+      console.log('🔵 [VOTE PAGE] Enregistrement du vote...')
 
       const { data: existingVote } = await supabase
         .from('votes')
         .select('id')
         .eq('session_id', sessionId)
         .eq('voter_id', currentUserId)
-        .single()
+        .maybeSingle()
 
       if (existingVote) {
-        await supabase
+        console.log('🔵 [VOTE PAGE] Mise à jour du vote existant')
+        const { error } = await supabase
           .from('votes')
           .update({
             top_player_id: topPlayerId,
@@ -175,8 +219,11 @@ export default function VotePage() {
             updated_at: new Date().toISOString()
           })
           .eq('id', existingVote.id)
+
+        if (error) throw error
       } else {
-        await supabase
+        console.log('🔵 [VOTE PAGE] Création d\'un nouveau vote')
+        const { error } = await supabase
           .from('votes')
           .insert({
             session_id: sessionId,
@@ -186,14 +233,23 @@ export default function VotePage() {
             top_comment: topComment,
             flop_comment: flopComment
           })
+
+        if (error) throw error
       }
 
+      // Mettre à jour le statut has_voted dans session_participants
+      await supabase
+        .from('session_participants')
+        .update({ has_voted: true })
+        .eq('session_id', sessionId)
+        .eq('user_id', currentUserId)
+
+      console.log('✅ [VOTE PAGE] Vote enregistré')
       alert('Vote enregistré avec succès !')
       router.push('/dashboard')
     } catch (error) {
-      console.error('Erreur:', error)
+      console.error('❌ [VOTE PAGE] Erreur enregistrement:', error)
       alert('Erreur lors de l\'enregistrement du vote')
-    } finally {
       setSubmitting(false)
     }
   }
@@ -201,7 +257,11 @@ export default function VotePage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
-        <Loader className="text-white animate-spin" size={48} />
+        <div className="text-center">
+          <Loader className="text-white animate-spin mx-auto mb-4" size={48} />
+          <p className="text-white">Chargement de la page de vote...</p>
+          <p className="text-gray-400 text-sm mt-2">Session ID: {sessionId}</p>
+        </div>
       </div>
     )
   }
@@ -218,98 +278,110 @@ export default function VotePage() {
           )}
         </div>
 
-        <div className="space-y-6">
-          {/* Vote TOP */}
-          <div className="bg-gradient-to-br from-green-900/20 to-blue-900/20 border border-green-500/30 rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <ThumbsUp className="text-green-400" size={32} />
-              <h2 className="text-2xl font-bold text-white">TOP du match</h2>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-gray-300 mb-2 font-semibold">Sélectionnez un joueur</label>
-                <select
-                  value={topPlayerId}
-                  onChange={(e) => setTopPlayerId(e.target.value)}
-                  className="w-full bg-slate-800 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
-                >
-                  <option value="">-- Choisir un joueur --</option>
-                  {players.map(player => (
-                    <option key={player.id} value={player.id}>{player.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-gray-300 mb-2 font-semibold">
-                  Commentaire (optionnel)
-                </label>
-                <RichTextEditor
-                  value={topComment}
-                  onChange={setTopComment}
-                  placeholder="Expliquez votre choix... (Ctrl+B pour gras, Ctrl+I pour italique)"
-                  minHeight="120px"
-                />
-              </div>
-            </div>
+        {players.length === 0 ? (
+          <div className="bg-red-900/30 border border-red-500/30 rounded-xl p-6 text-center">
+            <p className="text-red-300 font-semibold">Aucun joueur trouvé pour cette équipe</p>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="mt-4 bg-slate-700 hover:bg-slate-600 text-white px-6 py-2 rounded-lg transition"
+            >
+              Retour au dashboard
+            </button>
           </div>
-
-          {/* Vote FLOP */}
-          <div className="bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <ThumbsDown className="text-purple-400" size={32} />
-              <h2 className="text-2xl font-bold text-white">FLOP du match</h2>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-gray-300 mb-2 font-semibold">Sélectionnez un joueur</label>
-                <select
-                  value={flopPlayerId}
-                  onChange={(e) => setFlopPlayerId(e.target.value)}
-                  className="w-full bg-slate-800 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
-                >
-                  <option value="">-- Choisir un joueur --</option>
-                  {players.map(player => (
-                    <option key={player.id} value={player.id}>{player.name}</option>
-                  ))}
-                </select>
+        ) : (
+          <div className="space-y-6">
+            {/* Vote TOP */}
+            <div className="bg-gradient-to-br from-green-900/20 to-blue-900/20 border border-green-500/30 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <ThumbsUp className="text-green-400" size={32} />
+                <h2 className="text-2xl font-bold text-white">TOP du match</h2>
               </div>
 
-              <div>
-                <label className="block text-gray-300 mb-2 font-semibold">
-                  Commentaire (optionnel)
-                </label>
-                <RichTextEditor
-                  value={flopComment}
-                  onChange={setFlopComment}
-                  placeholder="Expliquez votre choix... (Ctrl+B pour gras, Ctrl+I pour italique)"
-                  minHeight="120px"
-                />
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-300 mb-2 font-semibold">Sélectionnez un joueur</label>
+                  <select
+                    value={topPlayerId}
+                    onChange={(e) => setTopPlayerId(e.target.value)}
+                    className="w-full bg-slate-800 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
+                  >
+                    <option value="">-- Choisir un joueur --</option>
+                    {players.map(player => (
+                      <option key={player.id} value={player.id}>{player.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-300 mb-2 font-semibold">
+                    Commentaire (optionnel)
+                  </label>
+                  <RichTextEditor
+                    value={topComment}
+                    onChange={setTopComment}
+                    placeholder="Expliquez votre choix... (Ctrl+B pour gras, Ctrl+I pour italique)"
+                    minHeight="120px"
+                  />
+                </div>
               </div>
             </div>
+
+            {/* Vote FLOP */}
+            <div className="bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <ThumbsDown className="text-purple-400" size={32} />
+                <h2 className="text-2xl font-bold text-white">FLOP du match</h2>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-300 mb-2 font-semibold">Sélectionnez un joueur</label>
+                  <select
+                    value={flopPlayerId}
+                    onChange={(e) => setFlopPlayerId(e.target.value)}
+                    className="w-full bg-slate-800 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                  >
+                    <option value="">-- Choisir un joueur --</option>
+                    {players.map(player => (
+                      <option key={player.id} value={player.id}>{player.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-300 mb-2 font-semibold">
+                    Commentaire (optionnel)
+                  </label>
+                  <RichTextEditor
+                    value={flopComment}
+                    onChange={setFlopComment}
+                    placeholder="Expliquez votre choix... (Ctrl+B pour gras, Ctrl+I pour italique)"
+                    minHeight="120px"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Bouton soumettre */}
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || !topPlayerId || !flopPlayerId}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2 transition shadow-lg"
+            >
+              {submitting ? (
+                <>
+                  <Loader className="animate-spin" size={20} />
+                  <span>Envoi en cours...</span>
+                </>
+              ) : (
+                <>
+                  <Send size={20} />
+                  <span>Envoyer mon vote</span>
+                </>
+              )}
+            </button>
           </div>
-
-          {/* Bouton soumettre */}
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || !topPlayerId || !flopPlayerId}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2 transition shadow-lg"
-          >
-            {submitting ? (
-              <>
-                <Loader className="animate-spin" size={20} />
-                <span>Envoi en cours...</span>
-              </>
-            ) : (
-              <>
-                <Send size={20} />
-                <span>Envoyer mon vote</span>
-              </>
-            )}
-          </button>
-        </div>
+        )}
       </div>
     </div>
   )
