@@ -135,28 +135,55 @@ export default function VotePage() {
       // Charger les membres de l'équipe
       const { data: teamMembers, error: membersError } = await supabase
         .from('team_members')
-        .select(`
-          user_id,
-          profiles (
-            id,
-            first_name,
-            last_name,
-            email
-          )
-        `)
+        .select('user_id')
         .eq('team_id', seasonData.team_id)
         .eq('status', 'accepted')
 
       if (membersError) {
         console.error('❌ [VOTE PAGE] Erreur membres:', membersError)
+        setLoading(false)
+        return
       }
 
-      console.log('✅ [VOTE PAGE] Membres récupérés:', teamMembers?.length || 0)
+      console.log('✅ [VOTE PAGE] Membres bruts récupérés:', teamMembers?.length || 0)
 
-      const playersList: Player[] = (teamMembers as TeamMemberResponse[])?.map((member) => {
-        const profile = member.profiles
-          ? (Array.isArray(member.profiles) ? member.profiles[0] : member.profiles)
-          : null
+      if (!teamMembers || teamMembers.length === 0) {
+        console.log('⚠️ [VOTE PAGE] Aucun membre trouvé')
+        setPlayers([])
+        setLoading(false)
+        return
+      }
+
+      // Charger les profils séparément
+      const userIds = teamMembers.map(m => m.user_id)
+      
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, email, nickname')
+        .in('id', userIds)
+
+      if (profilesError) {
+        console.error('❌ [VOTE PAGE] Erreur profils:', profilesError)
+      }
+
+      console.log('✅ [VOTE PAGE] Profils récupérés:', profilesData?.length || 0)
+
+      // Créer un map des profils
+      const profilesMap: Record<string, {
+        id: string
+        first_name: string | null
+        last_name: string | null
+        email: string | null
+        nickname: string | null
+      }> = {}
+
+      profilesData?.forEach(profile => {
+        profilesMap[profile.id] = profile
+      })
+
+      // Construire la liste des joueurs
+      const playersList: Player[] = teamMembers.map((member) => {
+        const profile = profilesMap[member.user_id]
 
         if (!profile) {
           return {
@@ -165,13 +192,25 @@ export default function VotePage() {
           }
         }
 
+        // Priorité : nickname > prénom nom > email
+        let displayName = 'Joueur inconnu'
+        
+        if (profile.nickname?.trim()) {
+          displayName = profile.nickname.trim()
+        } else if (profile.first_name || profile.last_name) {
+          const firstName = profile.first_name?.trim() || ''
+          const lastName = profile.last_name?.trim() || ''
+          const fullName = `${firstName} ${lastName}`.trim()
+          if (fullName) displayName = fullName
+        } else if (profile.email) {
+          displayName = profile.email
+        }
+
         return {
           id: profile.id,
-          name: profile.first_name && profile.last_name
-            ? `${profile.first_name} ${profile.last_name}`
-            : profile.email || 'Joueur inconnu'
+          name: displayName
         }
-      }) || []
+      })
 
       console.log('✅ [VOTE PAGE] Liste finale des joueurs:', playersList.length)
       setPlayers(playersList)
