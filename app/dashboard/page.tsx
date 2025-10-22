@@ -146,8 +146,25 @@ export default function DashboardPage() {
 
       setTeams(teamsData)
 
+      // Logique de sélection automatique d'équipe
       if (teamsData.length === 1) {
+        // Une seule équipe : charger automatiquement
         await loadTeamDetails(teamsData[0].id, teamsData[0])
+      } else {
+        // Plusieurs équipes : vérifier le localStorage
+        const savedTeamId = localStorage.getItem('selectedTeamId')
+        
+        if (savedTeamId) {
+          const savedTeam = teamsData.find(t => t.id === savedTeamId)
+          if (savedTeam) {
+            // Charger l'équipe sauvegardée
+            await loadTeamDetails(savedTeam.id, savedTeam)
+          } else {
+            // L'équipe sauvegardée n'existe plus, ne rien charger
+            // L'utilisateur verra l'écran de sélection
+          }
+        }
+        // Si pas de savedTeamId, on affiche l'écran de sélection
       }
 
     } catch (err) {
@@ -260,6 +277,9 @@ export default function DashboardPage() {
   }
 
   const loadTeamDetails = async (teamId: string, team: Team) => {
+    // Sauvegarder le choix dans localStorage
+    localStorage.setItem('selectedTeamId', teamId)
+    
     setSelectedTeam(team)
     
     console.log('🔍 Chargement des membres pour team_id:', teamId)
@@ -407,6 +427,8 @@ export default function DashboardPage() {
   }
 
   const handleLogout = async () => {
+    // Effacer la sélection d'équipe au logout
+    localStorage.removeItem('selectedTeamId')
     await supabase.auth.signOut()
     router.push('/')
   }
@@ -451,7 +473,12 @@ export default function DashboardPage() {
                   {team.description && (
                     <p className="text-gray-400 text-sm">{team.description}</p>
                   )}
-                  <p className="text-gray-500 text-sm mt-2">{team.memberCount} membres</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-gray-500 text-sm">{team.memberCount} membres</p>
+                    {localStorage.getItem('selectedTeamId') === team.id && (
+                      <span className="text-green-400 text-xs font-semibold">✓ Par défaut</span>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
