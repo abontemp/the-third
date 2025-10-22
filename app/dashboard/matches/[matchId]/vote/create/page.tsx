@@ -140,11 +140,26 @@ export default function CreateVotePage() {
       }> = {}
       
       profilesData?.forEach(profile => {
+        // Logique d'affichage du nom
+        let displayName = 'Utilisateur'
+        
+        // 1. Priorité au surnom
+        if (profile.nickname?.trim()) {
+          displayName = profile.nickname.trim()
+        }
+        // 2. Sinon prénom + nom
+        else if (profile.first_name || profile.last_name) {
+          const firstName = profile.first_name?.trim() || ''
+          const lastName = profile.last_name?.trim() || ''
+          displayName = `${firstName} ${lastName}`.trim()
+        }
+        // 3. Sinon utiliser l'ID
+        else {
+          displayName = `Membre #${profile.id.substring(0, 8)}`
+        }
+        
         profilesMap[profile.id] = {
-          display_name: profile.nickname || 
-                       (profile.first_name && profile.last_name 
-                         ? `${profile.first_name} ${profile.last_name}` 
-                         : profile.id.substring(0, 8)),
+          display_name: displayName,
           avatar_url: profile.avatar_url
         }
       })

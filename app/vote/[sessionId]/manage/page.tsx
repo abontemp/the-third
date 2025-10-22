@@ -93,8 +93,25 @@ export default function ManageVotePage() {
 
         const profilesMap: Record<string, string> = {}
         profiles?.forEach(p => {
-          profilesMap[p.id] = p.nickname || 
-                             (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8))
+          // Logique d'affichage du nom
+          let displayName = 'Utilisateur'
+          
+          // 1. Priorité au surnom
+          if (p.nickname?.trim()) {
+            displayName = p.nickname.trim()
+          }
+          // 2. Sinon prénom + nom
+          else if (p.first_name || p.last_name) {
+            const firstName = p.first_name?.trim() || ''
+            const lastName = p.last_name?.trim() || ''
+            displayName = `${firstName} ${lastName}`.trim()
+          }
+          // 3. Sinon utiliser l'ID
+          else {
+            displayName = `Membre #${p.id.substring(0, 8)}`
+          }
+          
+          profilesMap[p.id] = displayName
         })
 
         setParticipants(participantsData.map(p => ({

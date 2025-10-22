@@ -31,9 +31,7 @@ type Member = {
   role: string
   joined_at: string
   user_id: string
-  first_name?: string
-  last_name?: string
-  email?: string
+  display_name: string
 }
 
 export default function DashboardPage() {
@@ -47,7 +45,6 @@ export default function DashboardPage() {
   const [currentUserName, setCurrentUserName] = useState('')
   const [user, setUser] = useState<{ id: string } | null>(null)
   
-  // États pour la suppression de membres
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null)
   const [hasVotes, setHasVotes] = useState(false)
@@ -63,14 +60,14 @@ export default function DashboardPage() {
       const { error } = await supabase
         .from('team_members')
         .update({ role: newRole })
+        .eq('user_id', member.user_id)
         .eq('id', member.id)
       
       if (error) throw error
       
-      // Recharger les membres
       await loadTeamDetails(selectedTeam.id, selectedTeam)
       
-      alert(`${member.first_name || member.email} est maintenant ${newRole === 'manager' ? 'manager' : 'membre'}`)
+      alert(`${member.display_name} est maintenant ${newRole === 'manager' ? 'manager' : 'membre'}`)
     } catch (err) {
       console.error('Erreur:', err)
       alert('Erreur lors de la modification du rôle')
@@ -94,20 +91,28 @@ export default function DashboardPage() {
 
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('first_name, last_name, email')
+        .select('first_name, last_name, email, nickname')
         .eq('id', currentUser.id)
         .single()
 
       if (profileData) {
-        const displayName = profileData.first_name && profileData.last_name
-          ? `${profileData.first_name} ${profileData.last_name}`
-          : profileData.email || currentUser.email
+        let displayName = 'Utilisateur'
+        
+        if (profileData.nickname?.trim()) {
+          displayName = profileData.nickname.trim()
+        } else if (profileData.first_name || profileData.last_name) {
+          const firstName = profileData.first_name?.trim() || ''
+          const lastName = profileData.last_name?.trim() || ''
+          displayName = `${firstName} ${lastName}`.trim()
+        } else if (profileData.email) {
+          displayName = profileData.email
+        }
+        
         setCurrentUserName(displayName)
       } else {
         setCurrentUserName(currentUser.email || 'Utilisateur')
       }
 
-      // Récupérer toutes les équipes de l'utilisateur
       const { data: memberships } = await supabase
         .from('team_members')
         .select('team_id, role')
@@ -118,7 +123,6 @@ export default function DashboardPage() {
         return
       }
 
-      // Charger les détails de toutes les équipes
       const teamsData = await Promise.all(
         memberships.map(async (membership) => {
           const { data: teamData } = await supabase
@@ -142,7 +146,6 @@ export default function DashboardPage() {
 
       setTeams(teamsData)
 
-      // Redirection automatique si une seule équipe
       if (teamsData.length === 1) {
         await loadTeamDetails(teamsData[0].id, teamsData[0])
       }
@@ -156,15 +159,15 @@ export default function DashboardPage() {
 
   const handleJoinVote = async (sessionId: string) => {
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      const { data: { user } } = await supabase.auth.getUser()
       
-      if (!currentUser) return
+      if (!user) return
 
       const { error } = await supabase
         .from('session_participants')
         .insert([{
           session_id: sessionId,
-          user_id: currentUser.id,
+          user_id: user.id,
           has_voted: false
         }])
 
@@ -186,7 +189,6 @@ export default function DashboardPage() {
     
     setMemberToDelete(member)
     
-    // Vérifier si le membre a des votes
     const { data: seasons } = await supabase
       .from('seasons')
       .select('id')
@@ -211,7 +213,6 @@ export default function DashboardPage() {
         const sessionIds = sessions?.map(s => s.id) || []
         
         if (sessionIds.length > 0) {
-          // Vérifier si ce membre a reçu des votes
           const { data: votes } = await supabase
             .from('votes')
             .select('id')
@@ -263,7 +264,6 @@ export default function DashboardPage() {
     
     console.log('🔍 Chargement des membres pour team_id:', teamId)
     
-    // Charger les membres SANS la relation profiles
     const { data: membersData, error: membersError } = await supabase
       .from('team_members')
       .select('id, role, joined_at, user_id')
@@ -279,43 +279,62 @@ export default function DashboardPage() {
       console.log('⚠️ Aucun membre trouvé pour cette équipe')
       setMembers([])
     } else {
-      // Charger les profiles séparément
       const userIds = membersData.map(m => m.user_id)
       
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, email')
+        .select('id, first_name, last_name, email, nickname')
         .in('id', userIds)
 
       console.log('👤 Profiles data:', profilesData)
       console.log('❌ Erreur profiles:', profilesError)
 
-      // Créer un mapping des profiles
-      const profilesMap: Record<string, { first_name?: string; last_name?: string; email?: string }> = {}
+      const profilesMap: Record<string, { 
+        first_name?: string
+        last_name?: string
+        email?: string
+        nickname?: string
+      }> = {}
+      
       profilesData?.forEach(profile => {
         profilesMap[profile.id] = {
           first_name: profile.first_name,
           last_name: profile.last_name,
-          email: profile.email
+          email: profile.email,
+          nickname: profile.nickname
         }
       })
 
-      // Combiner les membres avec leurs profiles
-      const formattedMembers = membersData.map(member => ({
-        id: member.id,
-        role: member.role,
-        joined_at: member.joined_at,
-        user_id: member.user_id,
-        first_name: profilesMap[member.user_id]?.first_name,
-        last_name: profilesMap[member.user_id]?.last_name,
-        email: profilesMap[member.user_id]?.email
-      }))
+      const formattedMembers = membersData.map(member => {
+        const profile = profilesMap[member.user_id]
+        let displayName = `Membre #${member.user_id.substring(0, 8)}`
+        
+        if (profile) {
+          if (profile.nickname?.trim()) {
+            displayName = profile.nickname.trim()
+          } else if (profile.first_name || profile.last_name) {
+            const firstName = profile.first_name?.trim() || ''
+            const lastName = profile.last_name?.trim() || ''
+            const fullName = `${firstName} ${lastName}`.trim()
+            if (fullName) displayName = fullName
+          } else if (profile.email) {
+            displayName = profile.email
+          }
+        }
+        
+        return {
+          id: member.id,
+          role: member.role,
+          joined_at: member.joined_at,
+          user_id: member.user_id,
+          display_name: displayName
+        }
+      })
 
       console.log('✅ Membres formatés:', formattedMembers)
       setMembers(formattedMembers)
     }
 
-    // Charger les votes en cours pour cette équipe
     const { data: { user: currentUser } } = await supabase.auth.getUser()
     
     if (currentUser) {
@@ -400,7 +419,6 @@ export default function DashboardPage() {
     )
   }
 
-  // Sélection d'équipe si plusieurs
   if (!selectedTeam && teams.length > 1) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
@@ -526,7 +544,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Votes en cours */}
         {votingSessions.length > 0 && (
           <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-6 mb-8">
             <h2 className="text-2xl font-bold text-white mb-4">Votes en cours</h2>
@@ -599,7 +616,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Membres de l'équipe */}
         <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6 mb-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-white">Membres de l&apos;équipe</h2>
@@ -618,15 +634,11 @@ export default function DashboardPage() {
               <div key={member.id} className="bg-slate-700/30 border border-white/10 rounded-lg p-4 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                    {member.first_name 
-                      ? member.first_name[0].toUpperCase() 
-                      : member.user_id.substring(0, 2).toUpperCase()}
+                    {member.display_name[0].toUpperCase()}
                   </div>
                   <div>
                     <p className="font-semibold text-white">
-                      {member.first_name && member.last_name 
-                        ? `${member.first_name} ${member.last_name}`
-                        : member.email || `Membre #${member.user_id.substring(0, 8)}`}
+                      {member.display_name}
                     </p>
                     <p className="text-sm text-gray-400">
                       Rejoint le {new Date(member.joined_at).toLocaleDateString()}
@@ -658,7 +670,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Actions rapides pour managers */}
         {isManager && (
           <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-6 mb-6">
             <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
@@ -688,7 +699,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Section Équipes pour tout le monde */}
         <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-6 mb-6">
           <h2 className="text-2xl font-bold text-white mb-4">Équipes</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -711,7 +721,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Section Fun Features pour tout le monde */}
         <div className="bg-gradient-to-br from-pink-900/30 to-purple-900/30 border border-pink-500/30 rounded-xl p-6">
           <h2 className="text-2xl font-bold text-white mb-4">🎮 Fonctionnalités Fun</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -747,7 +756,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Modal de confirmation de suppression */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 border border-white/10 rounded-2xl p-6 max-w-md w-full">
@@ -788,7 +796,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Modal de gestion des managers */}
       {showManagerModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 border border-white/10 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
@@ -806,9 +813,7 @@ export default function DashboardPage() {
                   <div key={member.id} className="bg-slate-700/30 border border-white/10 rounded-lg p-4 flex items-center justify-between">
                     <div>
                       <p className="font-semibold text-white">
-                        {member.first_name && member.last_name 
-                          ? `${member.first_name} ${member.last_name}`
-                          : member.email || `Membre #${member.user_id.substring(0, 8)}`}
+                        {member.display_name}
                       </p>
                       <p className="text-sm text-gray-400">
                         {member.role === 'manager' ? '✅ Manager' : 'Membre'}
