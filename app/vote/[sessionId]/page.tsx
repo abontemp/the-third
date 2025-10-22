@@ -25,9 +25,9 @@ interface Profile {
   email: string | null
 }
 
-interface TeamMember {
+interface TeamMemberResponse {
   user_id: string
-  profiles: Profile
+  profiles: Profile | Profile[] | null
 }
 
 export default function VotePage() {
@@ -99,12 +99,26 @@ export default function VotePage() {
         .eq('team_id', match.team_id)
         .eq('status', 'accepted')
 
-      const playersList: Player[] = (teamMembers as TeamMember[])?.map((member) => ({
-        id: member.profiles.id,
-        name: member.profiles.first_name && member.profiles.last_name
-          ? `${member.profiles.first_name} ${member.profiles.last_name}`
-          : member.profiles.email || 'Joueur inconnu'
-      })) || []
+      const playersList: Player[] = (teamMembers as TeamMemberResponse[])?.map((member) => {
+        // Gérer le cas où profiles peut être un tableau ou un objet
+        const profile = Array.isArray(member.profiles) 
+          ? member.profiles[0] 
+          : member.profiles
+
+        if (!profile) {
+          return {
+            id: member.user_id,
+            name: 'Joueur inconnu'
+          }
+        }
+
+        return {
+          id: profile.id,
+          name: profile.first_name && profile.last_name
+            ? `${profile.first_name} ${profile.last_name}`
+            : profile.email || 'Joueur inconnu'
+        }
+      }) || []
 
       setPlayers(playersList)
 
