@@ -137,7 +137,6 @@ export default function VotePage() {
         .from('team_members')
         .select('user_id')
         .eq('team_id', seasonData.team_id)
-        .eq('status', 'accepted')
 
       if (membersError) {
         console.error('❌ [VOTE PAGE] Erreur membres:', membersError)
