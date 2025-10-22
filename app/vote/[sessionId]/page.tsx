@@ -6,6 +6,30 @@ import { createClient } from '@/lib/supabase/client'
 import { ThumbsUp, ThumbsDown, Send, Loader } from 'lucide-react'
 import RichTextEditor from '@/components/RichTextEditor'
 
+interface Player {
+  id: string
+  name: string
+}
+
+interface MatchInfo {
+  id: string
+  opponent: string
+  match_date: string
+  team_id: string
+}
+
+interface Profile {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+}
+
+interface TeamMember {
+  user_id: string
+  profiles: Profile
+}
+
 export default function VotePage() {
   const router = useRouter()
   const params = useParams()
@@ -14,12 +38,12 @@ export default function VotePage() {
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [players, setPlayers] = useState<any[]>([])
+  const [players, setPlayers] = useState<Player[]>([])
   const [topPlayerId, setTopPlayerId] = useState('')
   const [flopPlayerId, setFlopPlayerId] = useState('')
   const [topComment, setTopComment] = useState('')
   const [flopComment, setFlopComment] = useState('')
-  const [matchInfo, setMatchInfo] = useState<any>(null)
+  const [matchInfo, setMatchInfo] = useState<MatchInfo | null>(null)
   const [currentUserId, setCurrentUserId] = useState('')
 
   useEffect(() => {
@@ -59,7 +83,7 @@ export default function VotePage() {
         ? sessionData.matches[0] 
         : sessionData.matches
 
-      setMatchInfo(match)
+      setMatchInfo(match as MatchInfo)
 
       const { data: teamMembers } = await supabase
         .from('team_members')
@@ -75,7 +99,7 @@ export default function VotePage() {
         .eq('team_id', match.team_id)
         .eq('status', 'accepted')
 
-      const playersList = teamMembers?.map((member: any) => ({
+      const playersList: Player[] = (teamMembers as TeamMember[])?.map((member) => ({
         id: member.profiles.id,
         name: member.profiles.first_name && member.profiles.last_name
           ? `${member.profiles.first_name} ${member.profiles.last_name}`
