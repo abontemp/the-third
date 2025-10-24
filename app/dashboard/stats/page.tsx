@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader, Trophy, ThumbsDown, Ghost, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Loader, Trophy, Ghost, TrendingUp } from 'lucide-react'
 
 type PlayerStats = {
   user_id: string

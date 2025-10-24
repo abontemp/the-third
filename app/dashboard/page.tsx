@@ -1,6 +1,6 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trophy, Trash2, TrendingUp, Quote, Swords, Award, Sparkles } from 'lucide-react'
+import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trash2, TrendingUp, Quote, Swords, Award, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import NotificationBell from '@/components/NotificationBell'
@@ -280,7 +280,7 @@ export default function DashboardPage() {
       .from('team_members')
       .select('id, role, joined_at, user_id')
       .eq('team_id', teamId)
-      eq('status', 'accepted')
+      .eq('status', 'accepted')
 
     if (membersError) {
       console.error('❌ [DASHBOARD] Erreur membres:', membersError)

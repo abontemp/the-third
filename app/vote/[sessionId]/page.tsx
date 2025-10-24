@@ -25,11 +25,6 @@ interface Profile {
   email: string | null
 }
 
-interface TeamMemberResponse {
-  user_id: string
-  profiles: Profile | Profile[] | null
-}
-
 export default function VotePage() {
   const router = useRouter()
   const params = useParams()

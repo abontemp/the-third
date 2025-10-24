@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader, Trophy, ThumbsDown, Eye, Calendar } from 'lucide-react'
+import { ArrowLeft, Loader, Trophy, Eye, Calendar } from 'lucide-react'
 
 type VotingSession = {
   id: string
