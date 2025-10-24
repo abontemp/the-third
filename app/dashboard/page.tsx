@@ -230,7 +230,7 @@ export default function DashboardPage() {
             .in('session_id', sessionIds)
             .or(`top_reader_id.eq.${member.user_id},flop_reader_id.eq.${member.user_id}`)
           
-          setHasVotes(votes && votes.length > 0)
+          setHasVotes(!!votes && votes.length > 0)
         }
       }
     }
