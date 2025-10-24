@@ -17,7 +17,7 @@ export default function OnboardingPage() {
   const [teamName, setTeamName] = useState('')
   const [teamSport, setTeamSport] = useState('')
   const [teamDescription, setTeamDescription] = useState('')
-  
+
   // États pour rejoindre une équipe
   const [inviteCode, setInviteCode] = useState('')
 
