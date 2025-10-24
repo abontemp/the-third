@@ -541,6 +541,16 @@ export default function DashboardPage() {
                     Rejoindre ce vote
                   </button>
                 )}
+                
+                {isManager && (
+                  <button
+                    onClick={() => router.push(`/vote/${session.id}/manage`)}
+                    className="w-full mt-2 bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+                  >
+                    <Users size={20} />
+                    Gérer le vote
+                  </button>
+                )}
               </div>
             ))}
 
