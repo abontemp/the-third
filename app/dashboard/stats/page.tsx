@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader, Trophy, Ghost, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Loader, Trophy, ThumbsDown, Ghost } from 'lucide-react'
 
 type PlayerStats = {
   user_id: string
@@ -24,9 +24,7 @@ export default function StatsPage() {
   const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
-  const [selectedTeam, setSelectedTeam] = useState<string | null>(null)
   const [teamName, setTeamName] = useState('')
-  const [currentSeasonId, setCurrentSeasonId] = useState<string | null>(null)
   const [view, setView] = useState<'season' | 'all'>('season')
   
   const [seasonStats, setSeasonStats] = useState<StatsData>({ masterTop: null, masterFlop: null, ghosts: [] })
@@ -66,7 +64,6 @@ export default function StatsPage() {
       }
 
       const teamId = managerTeams[0].team_id
-      setSelectedTeam(teamId)
 
       // Récupérer le nom de l'équipe
       const { data: teamData } = await supabase
@@ -87,7 +84,6 @@ export default function StatsPage() {
         .order('created_at', { ascending: false })
 
       const currentSeason = seasons?.find(s => s.is_current)
-      setCurrentSeasonId(currentSeason?.id || null)
 
       // Charger les stats selon la vue
       if (view === 'season' && currentSeason) {
