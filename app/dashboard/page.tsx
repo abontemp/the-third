@@ -312,7 +312,7 @@ export default function DashboardPage() {
 
       setMembers(membersWithNames)
 
-      const { data: currentSeason } = await supabase
+      const { data: currentSeason, error: seasonError } = await supabase
         .from('seasons')
         .select('id')
         .eq('team_id', teamId)
@@ -320,17 +320,25 @@ export default function DashboardPage() {
         .single()
 
       if (!currentSeason) {
+        console.log('❌ Aucune saison active trouvée pour cette équipe')
+        console.log('Erreur:', seasonError)
         setVotingSessions([])
         return
       }
+      
+      console.log('✅ Saison active trouvée:', currentSeason.id)
 
-      const { data: matches } = await supabase
+      const { data: matches, error: matchesError } = await supabase
         .from('matches')
         .select('id, opponent, match_date')
         .eq('season_id', currentSeason.id)
         .order('match_date', { ascending: false })
 
-      if (!matches) {
+      console.log('📅 Matchs trouvés:', matches?.length || 0)
+      if (matchesError) console.log('Erreur matchs:', matchesError)
+
+      if (!matches || matches.length === 0) {
+        console.log('❌ Aucun match trouvé pour cette saison')
         setVotingSessions([])
         return
       }
@@ -367,7 +375,8 @@ export default function DashboardPage() {
         })
       )
 
-      setVotingSessions(sessionsData.filter((s): s is VotingSession => s !== null))
+      const validSessions = sessionsData.filter((s): s is VotingSession => s !== null)
+      setVotingSessions(validSessions)
 
     } catch (err) {
       console.error('Erreur lors du chargement des détails:', err)
