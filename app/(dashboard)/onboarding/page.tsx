@@ -1,358 +1,422 @@
 'use client'
 
-import { useState } from 'react'
-import { Plus, Search, ArrowRight, X, AlertCircle, CheckCircle, Loader } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { Users, Plus, Loader, LogIn, UserPlus } from 'lucide-react'
 
 export default function OnboardingPage() {
   const router = useRouter()
-  const [step, setStep] = useState('choice')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const supabase = createClient()
+  const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [joining, setJoining] = useState(false)
+  const [mode, setMode] = useState<'choice' | 'create' | 'join'>('choice')
+  
+  // États pour créer une équipe
+  const [teamName, setTeamName] = useState('')
+  const [teamSport, setTeamSport] = useState('')
+  const [teamDescription, setTeamDescription] = useState('')
+  
+  // États pour rejoindre une équipe
+  const [inviteCode, setInviteCode] = useState('')
 
-  const [createForm, setCreateForm] = useState({
-    teamName: '',
-    sport: '',
-    description: ''
-  })
+  useEffect(() => {
+    checkAuth()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [searchQuery, setSearchQuery] = useState('')
-const [searchResults, setSearchResults] = useState<Array<{
-  id: string
-  name: string
-  sport: string
-  description?: string
-}>>([]) 
-const [searching, setSearching] = useState(false)
-
-  const sports = [
-    'Football', 'Basketball', 'Volleyball', 'Handball', 'Rugby',
-    'Tennis', 'Badminton', 'Hockey', 'Baseball', 'Autre'
-  ]
-
-  const handleCreateTeam = async () => {
-    if (!createForm.teamName.trim()) {
-      setError("Le nom de l'équipe est obligatoire")
-      return
-    }
-    if (!createForm.sport) {
-      setError('Veuillez sélectionner un sport')
-      return
-    }
-
-    setLoading(true)
-    setError('')
-
+  const checkAuth = async () => {
     try {
-      const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       
-      if (!user) throw new Error('Vous devez être connecté')
+      if (!user) {
+        router.push('/login')
+        return
+      }
 
-      const { data: team, error: teamError } = await supabase
+      // Vérifier si l'utilisateur a déjà des équipes
+      const { data: memberships } = await supabase
+        .from('team_members')
+        .select('team_id')
+        .eq('user_id', user.id)
+
+      // Si l'utilisateur a au moins une équipe acceptée, rediriger vers le dashboard
+      if (memberships && memberships.length > 0) {
+        router.push('/dashboard')
+        return
+      }
+
+      setLoading(false)
+    } catch (error) {
+      console.error('Erreur:', error)
+      setLoading(false)
+    }
+  }
+
+  const handleCreateTeam = async () => {
+    if (!teamName.trim() || !teamSport.trim()) {
+      alert('Veuillez remplir le nom et le sport de l\'équipe')
+      return
+    }
+
+    try {
+      setCreating(true)
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      // Générer un code d'invitation unique
+      const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase()
+
+      // Créer l'équipe
+      const { data: newTeam, error: teamError } = await supabase
         .from('teams')
-        .insert([{
-          name: createForm.teamName,
-          sport: createForm.sport,
-          description: createForm.description,
-          creator_id: user.id
-        }])
+        .insert({
+          name: teamName.trim(),
+          sport: teamSport.trim(),
+          description: teamDescription.trim() || null,
+          invite_code: inviteCode,
+          created_by: user.id
+        })
         .select()
         .single()
 
       if (teamError) throw teamError
 
+      // Ajouter le créateur comme membre avec le rôle 'creator' et status 'accepted'
       const { error: memberError } = await supabase
         .from('team_members')
-        .insert([{
+        .insert({
+          team_id: newTeam.id,
+          user_id: user.id,
+          role: 'creator',
+          status: 'accepted'
+        })
+
+      if (memberError) throw memberError
+
+      // Créer une saison par défaut
+      await supabase
+        .from('seasons')
+        .insert({
+          team_id: newTeam.id,
+          name: 'Saison 2024-2025',
+          start_date: new Date().toISOString().split('T')[0],
+          is_active: true
+        })
+
+      alert(`Équipe créée avec succès !\nCode d'invitation : ${inviteCode}\nPartagez ce code avec vos coéquipiers.`)
+      router.push('/dashboard')
+    } catch (error) {
+      console.error('Erreur:', error)
+      alert('Erreur lors de la création de l\'équipe')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleJoinTeam = async () => {
+    if (!inviteCode.trim()) {
+      alert('Veuillez entrer un code d\'invitation')
+      return
+    }
+
+    try {
+      setJoining(true)
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      // Vérifier si l'équipe existe
+      const { data: team, error: teamError } = await supabase
+        .from('teams')
+        .select('id, name')
+        .eq('invite_code', inviteCode.trim().toUpperCase())
+        .single()
+
+      if (teamError || !team) {
+        alert('Code d\'invitation invalide')
+        setJoining(false)
+        return
+      }
+
+      // Vérifier si l'utilisateur n'est pas déjà membre ou n'a pas déjà une demande
+      const { data: existingMember } = await supabase
+        .from('team_members')
+        .select('id, status')
+        .eq('team_id', team.id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (existingMember) {
+        if (existingMember.status === 'pending') {
+          alert('Vous avez déjà une demande en attente pour cette équipe. Les managers vont l\'examiner bientôt.')
+        } else if (existingMember.status === 'accepted') {
+          alert('Vous êtes déjà membre de cette équipe')
+          router.push('/dashboard')
+        } else if (existingMember.status === 'rejected') {
+          alert('Votre demande précédente a été refusée. Contactez un manager pour plus d\'informations.')
+        }
+        setJoining(false)
+        return
+      }
+
+      // Créer une demande d'adhésion (status: 'pending')
+      const { error: insertError } = await supabase
+        .from('team_members')
+        .insert({
           team_id: team.id,
           user_id: user.id,
-          role: 'creator'
-        }])
+          role: 'member',
+          status: 'pending'
+        })
 
-      if (memberError) throw memberError
+      if (insertError) throw insertError
 
-      setSuccess('Équipe créée avec succès !')
-      setTimeout(() => router.push('/dashboard'), 1500)
-
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur lors de la création")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-const handleSearchTeams = async () => {
-    setSearching(true)
-    setError('')
-    setSearchResults([])
-
-    try {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from('teams')
-        .select('id, name, sport, description')
-        .limit(50) // Limite à 50 équipes
-
-      if (error) throw error
-      setSearchResults(data || [])
-      if (data && data.length === 0) setError('Aucune équipe disponible')
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur')
-    } finally {
-      setSearching(false)
-    }
-  }
-
-const handleJoinRequest = async (teamId: string, teamName: string) => {
-    setLoading(true)
-    setError('')
-
-    try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Vous devez être connecté')
-
-      // Rejoindre directement l'équipe (sans validation)
-      const { error: memberError } = await supabase
+      // Récupérer les managers de l'équipe
+      const { data: managers } = await supabase
         .from('team_members')
-        .insert([{
-          team_id: teamId,
-          user_id: user.id,
-          role: 'member'
-        }])
+        .select('user_id')
+        .eq('team_id', team.id)
+        .in('role', ['creator', 'manager'])
+        .eq('status', 'accepted')
 
-      if (memberError) throw memberError
+      // Récupérer le nom de l'utilisateur
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, nickname, email')
+        .eq('id', user.id)
+        .single()
 
-      setSuccess(`Vous avez rejoint "${teamName}" !`)
+      let userName = 'Un utilisateur'
+      if (profile) {
+        if (profile.nickname?.trim()) {
+          userName = profile.nickname.trim()
+        } else if (profile.first_name || profile.last_name) {
+          const firstName = profile.first_name?.trim() || ''
+          const lastName = profile.last_name?.trim() || ''
+          userName = `${firstName} ${lastName}`.trim()
+        } else if (profile.email) {
+          userName = profile.email
+        }
+      }
+
+      // Créer une notification pour chaque manager
+      if (managers && managers.length > 0) {
+        const notifications = managers.map(manager => ({
+          user_id: manager.user_id,
+          type: 'team_join_request',
+          title: '🔔 Nouvelle demande',
+          message: `${userName} souhaite rejoindre l'équipe "${team.name}"`,
+          team_id: team.id
+        }))
+
+        await supabase
+          .from('notifications')
+          .insert(notifications)
+      }
+
+      alert(`Demande envoyée avec succès !\n\nLes managers de "${team.name}" vont examiner votre demande et vous recevrez une notification dès qu'une décision sera prise.`)
       
-      setTimeout(() => {
-        router.push('/dashboard')
-      }, 1500)
-
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur")
+      // Rediriger vers le dashboard (ils verront un message en attente)
+      router.push('/dashboard')
+    } catch (error) {
+      console.error('Erreur:', error)
+      alert('Erreur lors de l\'envoi de la demande')
     } finally {
-      setLoading(false)
+      setJoining(false)
     }
   }
 
-  if (step === 'choice') {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="w-full max-w-4xl">
-          <div className="text-center mb-12">
-            <h1 className="text-4xl font-bold text-white mb-4">
-              Bienvenue sur The Third ! 🎉
-            </h1>
-            <p className="text-xl text-gray-300">
-              Commencez en créant ou rejoignant une équipe
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <button
-              onClick={() => setStep('create')}
-              className="group bg-gradient-to-br from-orange-900/30 to-red-900/30 border-2 border-orange-500/30 hover:border-orange-500 rounded-2xl p-8 transition-all hover:scale-105"
-            >
-              <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center mx-auto mb-6">
-                <Plus className="text-white" size={32} />
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-3">Créer une équipe</h2>
-              <p className="text-gray-300 mb-6">
-                Créez votre équipe et invitez vos coéquipiers
-              </p>
-              <div className="flex items-center justify-center gap-2 text-orange-400 font-semibold">
-                <span>Commencer</span>
-                <ArrowRight size={20} />
-              </div>
-            </button>
-
-            <button
-              onClick={() => setStep('join')}
-              className="group bg-gradient-to-br from-blue-900/30 to-purple-900/30 border-2 border-blue-500/30 hover:border-blue-500 rounded-2xl p-8 transition-all hover:scale-105"
-            >
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl flex items-center justify-center mx-auto mb-6">
-                <Search className="text-white" size={32} />
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-3">Rejoindre une équipe</h2>
-              <p className="text-gray-300 mb-6">
-                Recherchez et rejoignez une équipe existante
-              </p>
-              <div className="flex items-center justify-center gap-2 text-blue-400 font-semibold">
-                <span>Rechercher</span>
-                <ArrowRight size={20} />
-              </div>
-            </button>
-          </div>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+        <Loader className="text-white animate-spin" size={48} />
       </div>
     )
   }
 
-  if (step === 'create') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl">
-          <button onClick={() => setStep('choice')} className="mb-6 text-gray-400 hover:text-white transition flex items-center gap-2">
-            <X size={20} />
-            <span>Retour</span>
-          </button>
-
-          <div className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-2xl p-8">
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold text-white mb-2">Créer votre équipe</h1>
-              <p className="text-gray-400">Vous deviendrez le manager</p>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl">
+        {mode === 'choice' && (
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-orange-500 rounded-2xl flex items-center justify-center font-bold text-white text-2xl mx-auto mb-4">
+              T3
             </div>
+            <h1 className="text-4xl font-bold text-white mb-2">Bienvenue sur Top3</h1>
+            <p className="text-gray-400 text-lg">Créez ou rejoignez une équipe pour commencer</p>
+          </div>
+        )}
 
-            {error && (
-              <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-start gap-3">
-                <AlertCircle className="text-red-400" size={20} />
-                <p className="text-red-300 text-sm">{error}</p>
-              </div>
-            )}
-
-            {success && (
-              <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-lg p-4 flex items-start gap-3">
-                <CheckCircle className="text-green-400" size={20} />
-                <p className="text-green-300 text-sm">{success}</p>
-              </div>
-            )}
-
-            <div className="space-y-5">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Nom de l&apos;équipe *
-                </label>
-                <input
-                  type="text"
-                  value={createForm.teamName}
-                  onChange={(e) => setCreateForm({ ...createForm, teamName: e.target.value })}
-                  className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
-                  placeholder="Les Guerriers"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Sport *</label>
-                <select
-                  value={createForm.sport}
-                  onChange={(e) => setCreateForm({ ...createForm, sport: e.target.value })}
-                  className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
-                >
-                  <option value="">Sélectionnez un sport</option>
-                  {sports.map(sport => (
-                    <option key={sport} value={sport}>{sport}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Description (optionnel)
-                </label>
-                <textarea
-                  value={createForm.description}
-                  onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
-                  rows={4}
-                  className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white resize-none"
-                  placeholder="Notre équipe..."
-                />
-              </div>
+        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-8">
+          {mode === 'choice' && (
+            <div className="space-y-4">
+              <button
+                onClick={() => setMode('create')}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-6 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition shadow-lg"
+              >
+                <Plus size={24} />
+                <span>Créer une nouvelle équipe</span>
+              </button>
 
               <button
-                onClick={handleCreateTeam}
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50"
+                onClick={() => setMode('join')}
+                className="w-full bg-slate-700 hover:bg-slate-600 text-white py-6 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition border border-white/10"
               >
-                {loading ? 'Création...' : 'Créer mon équipe'}
+                <UserPlus size={24} />
+                <span>Rejoindre une équipe existante</span>
               </button>
             </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
+          )}
 
-  if (step === 'join') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl">
-          <button onClick={() => setStep('choice')} className="mb-6 text-gray-400 hover:text-white transition flex items-center gap-2">
-            <X size={20} />
-            <span>Retour</span>
-          </button>
+          {mode === 'create' && (
+            <div>
+              <button
+                onClick={() => setMode('choice')}
+                className="text-gray-400 hover:text-white transition mb-6"
+              >
+                ← Retour
+              </button>
 
-          <div className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-2xl p-8">
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold text-white mb-2">Rejoindre une équipe</h1>
-              <p className="text-gray-400">Recherchez par nom</p>
-            </div>
+              <h2 className="text-2xl font-bold text-white mb-6">Créer votre équipe</h2>
 
-            {error && (
-              <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-start gap-3">
-                <AlertCircle className="text-red-400" size={20} />
-                <p className="text-red-300 text-sm">{error}</p>
-              </div>
-            )}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-300 mb-2 font-semibold">
+                    Nom de l'équipe *
+                  </label>
+                  <input
+                    type="text"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    placeholder="Ex: Les Tigres"
+                    className="w-full bg-slate-700 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
 
-            {success && (
-              <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-lg p-4 flex items-start gap-3">
-                <CheckCircle className="text-green-400" size={20} />
-                <p className="text-green-300 text-sm">{success}</p>
-              </div>
-            )}
+                <div>
+                  <label className="block text-gray-300 mb-2 font-semibold">
+                    Sport *
+                  </label>
+                  <select
+                    value={teamSport}
+                    onChange={(e) => setTeamSport(e.target.value)}
+                    className="w-full bg-slate-700 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <option value="">-- Sélectionnez un sport --</option>
+                    <option value="Football">Football ⚽</option>
+                    <option value="Basketball">Basketball 🏀</option>
+                    <option value="Volleyball">Volleyball 🏐</option>
+                    <option value="Handball">Handball 🤾</option>
+                    <option value="Rugby">Rugby 🏉</option>
+                    <option value="Hockey">Hockey 🏒</option>
+                    <option value="Tennis">Tennis 🎾</option>
+                    <option value="Baseball">Baseball ⚾</option>
+                    <option value="Autre">Autre</option>
+                  </select>
+                </div>
 
-            <div className="mb-6">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearchTeams()}
-                  className="flex-1 bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
-                  placeholder="Nom de l'équipe..."
-                />
+                <div>
+                  <label className="block text-gray-300 mb-2 font-semibold">
+                    Description (optionnel)
+                  </label>
+                  <textarea
+                    value={teamDescription}
+                    onChange={(e) => setTeamDescription(e.target.value)}
+                    placeholder="Décrivez votre équipe..."
+                    rows={3}
+                    className="w-full bg-slate-700 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+
                 <button
-                  onClick={handleSearchTeams}
-                  disabled={searching}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition"
+                  onClick={handleCreateTeam}
+                  disabled={creating || !teamName.trim() || !teamSport.trim()}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2 transition shadow-lg"
                 >
-                  {searching ? <Loader className="animate-spin" size={20} /> : 'Rechercher'}
+                  {creating ? (
+                    <>
+                      <Loader className="animate-spin" size={20} />
+                      <span>Création en cours...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={20} />
+                      <span>Créer l'équipe</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
+          )}
 
-            {searchResults.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-white">Résultats ({searchResults.length})</h3>
-                {searchResults.map(team => (
-                  <div key={team.id} className="bg-slate-700/30 border border-white/10 rounded-lg p-4">
-                    <div className="flex justify-between items-start gap-4">
-                      <div>
-                        <h4 className="text-lg font-bold text-white">{team.name}</h4>
-                        <p className="text-sm text-blue-400">{team.sport}</p>
-                        {team.description && <p className="text-sm text-gray-400 mt-1">{team.description}</p>}
-                      </div>
-                      <button
-                        onClick={() => handleJoinRequest(team.id, team.name)}
-                        disabled={loading}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
-                      >
-                        Rejoindre
-                      </button>
-                    </div>
-                  </div>
-                ))}
+          {mode === 'join' && (
+            <div>
+              <button
+                onClick={() => setMode('choice')}
+                className="text-gray-400 hover:text-white transition mb-6"
+              >
+                ← Retour
+              </button>
+
+              <h2 className="text-2xl font-bold text-white mb-6">Rejoindre une équipe</h2>
+
+              <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-6">
+                <p className="text-blue-200 text-sm">
+                  💡 <strong>Comment ça marche ?</strong>
+                  <br />
+                  1. Entrez le code d'invitation fourni par un manager
+                  <br />
+                  2. Votre demande sera envoyée aux managers
+                  <br />
+                  3. Vous recevrez une notification dès qu'ils auront pris une décision
+                </p>
               </div>
-            )}
-          </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-300 mb-2 font-semibold">
+                    Code d'invitation
+                  </label>
+                  <input
+                    type="text"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                    placeholder="Ex: ABC123XY"
+                    className="w-full bg-slate-700 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 font-mono text-lg tracking-wider"
+                    maxLength={8}
+                  />
+                </div>
+
+                <button
+                  onClick={handleJoinTeam}
+                  disabled={joining || !inviteCode.trim()}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-2 transition shadow-lg"
+                >
+                  {joining ? (
+                    <>
+                      <Loader className="animate-spin" size={20} />
+                      <span>Envoi de la demande...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogIn size={20} />
+                      <span>Envoyer la demande</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-    )
-  }
-
-  return null
+    </div>
+  )
 }

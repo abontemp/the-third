@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/client'
 import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trophy, Trash2, TrendingUp, Quote, Swords, Award, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import NotificationBell from '@/components/NotificationBell'
+
 
 type VotingSession = {
   id: string
@@ -278,6 +280,7 @@ export default function DashboardPage() {
       .from('team_members')
       .select('id, role, joined_at, user_id')
       .eq('team_id', teamId)
+      eq('status', 'accepted')
 
     if (membersError) {
       console.error('❌ [DASHBOARD] Erreur membres:', membersError)
@@ -528,6 +531,9 @@ export default function DashboardPage() {
                 <LogOut size={20} />
                 <span className="hidden sm:inline">Déconnexion</span>
               </button>
+              <div className="flex items-center gap-4">
+  <NotificationBell />
+  </div>
             </div>
           </div>
         </div>
@@ -634,6 +640,15 @@ export default function DashboardPage() {
                         Gérer
                       </button>
                     )}
+                    {isManager && (
+  <button
+    onClick={() => router.push('/dashboard/requests')}
+    className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+  >
+    <Users size={20} />
+    Demandes d'adhésion
+  </button>
+)}
                   </div>
                 </div>
               ))}
