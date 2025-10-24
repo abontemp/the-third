@@ -180,9 +180,6 @@ export default function CreateMatchPage() {
         season = newSeason
       }
 
-      if (!season) {
-        throw new Error("La saison active n'a pas pu être récupérée ou créée.")
-      }
       console.log('Saison active:', season.id)
 
       // 2. Créer le match
@@ -192,6 +189,7 @@ export default function CreateMatchPage() {
           season_id: season.id,
           opponent: opponent.trim(),
           match_date: matchDate,
+          status: 'scheduled'
         }])
         .select()
         .single()
