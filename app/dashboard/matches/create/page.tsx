@@ -173,11 +173,15 @@ export default function CreateMatchPage() {
           .select()
           .single()
 
-        if (seasonError) {
+        if (seasonError || !newSeason) {
           console.error('Erreur création saison:', seasonError)
-          throw seasonError
+          throw seasonError || new Error('Impossible de créer la saison')
         }
         season = newSeason
+      }
+
+      if (!season) {
+        throw new Error('Aucune saison disponible')
       }
 
       console.log('Saison active:', season.id)
