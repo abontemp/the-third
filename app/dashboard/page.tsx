@@ -375,7 +375,7 @@ export default function DashboardPage() {
         })
       )
 
-      const validSessions = sessionsData.filter((s): s is VotingSession => s !== null)
+      const validSessions = sessionsData.filter(s => s !== null) as VotingSession[]
       setVotingSessions(validSessions)
 
     } catch (err) {
