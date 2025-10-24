@@ -92,10 +92,6 @@ export default function ManageVotePage() {
         const match = Array.isArray(matchData.matches) ? matchData.matches[0] : matchData.matches
         const season = Array.isArray(match.seasons) ? match.seasons[0] : match.seasons
         const teamId = season?.team_id
-      if (matchData && matchData.matches) {
-        const match = Array.isArray(matchData.matches) ? matchData.matches[0] : matchData.matches
-        const season = Array.isArray(match.seasons) ? match.seasons[0] : match.seasons
-        const teamId = season?.team_id
         
         if (teamId) {
           const { data: membership } = await supabase
