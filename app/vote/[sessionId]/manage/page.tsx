@@ -55,7 +55,7 @@ export default function ManageVotePage() {
         .select(`
           id,
           status,
-          match:match_id(
+          matches!voting_sessions_match_id_fkey(
             opponent,
             match_date
           )
@@ -63,31 +63,50 @@ export default function ManageVotePage() {
         .eq('id', sessionId)
         .single()
 
-      if (!sessionData) {
+      if (!sessionData || !sessionData.matches) {
         setError('Session introuvable')
         return
       }
 
-      setSession(sessionData as Session)
+      // Transformer les données pour correspondre au type Session
+      const session: Session = {
+        id: sessionData.id,
+        status: sessionData.status,
+        match: Array.isArray(sessionData.matches) ? sessionData.matches[0] : sessionData.matches
+      }
+
+      setSession(session)
 
       // Vérifier si l'utilisateur est manager
       const { data: matchData } = await supabase
         .from('voting_sessions')
-        .select('match:match_id(season:season_id(team_id))')
+        .select(`
+          matches!voting_sessions_match_id_fkey(
+            seasons!matches_season_id_fkey(team_id)
+          )
+        `)
         .eq('id', sessionId)
         .single()
 
-      if (matchData) {
-        const teamId = (matchData as any).match.season.team_id
+      if (matchData && matchData.matches) {
+        const match = Array.isArray(matchData.matches) ? matchData.matches[0] : matchData.matches
+        const season = Array.isArray(match.seasons) ? match.seasons[0] : match.seasons
+        const teamId = season?.team_id
+      if (matchData && matchData.matches) {
+        const match = Array.isArray(matchData.matches) ? matchData.matches[0] : matchData.matches
+        const season = Array.isArray(match.seasons) ? match.seasons[0] : match.seasons
+        const teamId = season?.team_id
         
-        const { data: membership } = await supabase
-          .from('team_members')
-          .select('role')
-          .eq('team_id', teamId)
-          .eq('user_id', user.id)
-          .single()
+        if (teamId) {
+          const { data: membership } = await supabase
+            .from('team_members')
+            .select('role')
+            .eq('team_id', teamId)
+            .eq('user_id', user.id)
+            .single()
 
-        setIsManager(membership?.role === 'manager' || membership?.role === 'creator')
+          setIsManager(membership?.role === 'manager' || membership?.role === 'creator')
+        }
       }
 
       // Récupérer les participants
