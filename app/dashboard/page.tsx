@@ -230,7 +230,7 @@ export default function DashboardPage() {
             .in('session_id', sessionIds)
             .or(`top_reader_id.eq.${member.user_id},flop_reader_id.eq.${member.user_id}`)
           
-          setHasVotes(!!(votes && votes.length > 0))
+          setHasVotes(votes && votes.length > 0)
         }
       }
     }
@@ -367,7 +367,7 @@ export default function DashboardPage() {
         })
       )
 
-      setVotingSessions(sessionsData.filter(s => s !== null) as VotingSession[])
+      setVotingSessions(sessionsData.filter((s): s is VotingSession => s !== null))
 
     } catch (err) {
       console.error('Erreur lors du chargement des détails:', err)
@@ -478,10 +478,22 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {votingSessions
-            .filter(s => s.status === 'open')
-            .map(session => (
+        {/* Section des votes en cours et résultats */}
+        {votingSessions.length === 0 ? (
+          <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-8 mb-6 text-center">
+            <Calendar className="text-gray-400 mx-auto mb-4" size={48} />
+            <h3 className="text-xl font-bold text-white mb-2">Aucun match pour le moment</h3>
+            <p className="text-gray-400">
+              {isManager 
+                ? "Créez votre premier match pour commencer à voter !" 
+                : "Les managers créeront bientôt le prochain match."}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            {votingSessions
+              .filter(s => s.status === 'open')
+              .map(session => (
               <div
                 key={session.id}
                 className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-xl p-6"
@@ -549,7 +561,8 @@ export default function DashboardPage() {
                 </button>
               </div>
             ))}
-        </div>
+          </div>
+        )}
 
         <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
