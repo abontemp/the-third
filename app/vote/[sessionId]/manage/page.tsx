@@ -55,7 +55,7 @@ export default function ManageVotePage() {
         .select(`
           id,
           status,
-          match:matches(
+          match:match_id(
             opponent,
             match_date
           )
@@ -73,7 +73,7 @@ export default function ManageVotePage() {
       // Vérifier si l'utilisateur est manager
       const { data: matchData } = await supabase
         .from('voting_sessions')
-        .select('match:matches(season:seasons(team_id))')
+        .select('match:match_id(season:season_id(team_id))')
         .eq('id', sessionId)
         .single()
 
