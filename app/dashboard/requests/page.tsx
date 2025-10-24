@@ -87,7 +87,13 @@ export default function TeamRequestsPage() {
           .select('id, first_name, last_name, email, nickname')
           .in('id', userIds)
 
-        const profilesMap: Record<string, any> = {}
+        const profilesMap: Record<string, {
+          id: string
+          first_name?: string
+          last_name?: string
+          email?: string
+          nickname?: string
+        }> = {}
         profiles?.forEach(p => {
           profilesMap[p.id] = p
         })

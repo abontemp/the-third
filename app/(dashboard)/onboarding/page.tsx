@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Users, Plus, Loader, LogIn, UserPlus } from 'lucide-react'
+import { Plus, Loader, LogIn, UserPlus } from 'lucide-react'
 
 export default function OnboardingPage() {
   const router = useRouter()
@@ -55,7 +55,7 @@ export default function OnboardingPage() {
 
   const handleCreateTeam = async () => {
     if (!teamName.trim() || !teamSport.trim()) {
-      alert('Veuillez remplir le nom et le sport de l\'équipe')
+      alert('Veuillez remplir le nom et le sport de l&apos;équipe')
       return
     }
 
@@ -112,7 +112,7 @@ export default function OnboardingPage() {
       router.push('/dashboard')
     } catch (error) {
       console.error('Erreur:', error)
-      alert('Erreur lors de la création de l\'équipe')
+      alert('Erreur lors de la création de l&apos;équipe')
     } finally {
       setCreating(false)
     }
@@ -141,7 +141,7 @@ export default function OnboardingPage() {
         .single()
 
       if (teamError || !team) {
-        alert('Code d\'invitation invalide')
+        alert('Code d&apos;invitation invalide')
         setJoining(false)
         return
       }
@@ -156,12 +156,12 @@ export default function OnboardingPage() {
 
       if (existingMember) {
         if (existingMember.status === 'pending') {
-          alert('Vous avez déjà une demande en attente pour cette équipe. Les managers vont l\'examiner bientôt.')
+          alert('Vous avez déjà une demande en attente pour cette équipe. Les managers vont l&apos;examiner bientôt.')
         } else if (existingMember.status === 'accepted') {
           alert('Vous êtes déjà membre de cette équipe')
           router.push('/dashboard')
         } else if (existingMember.status === 'rejected') {
-          alert('Votre demande précédente a été refusée. Contactez un manager pour plus d\'informations.')
+          alert('Votre demande précédente a été refusée. Contactez un manager pour plus d&apos;informations.')
         }
         setJoining(false)
         return
@@ -222,7 +222,7 @@ export default function OnboardingPage() {
           .insert(notifications)
       }
 
-      alert(`Demande envoyée avec succès !\n\nLes managers de "${team.name}" vont examiner votre demande et vous recevrez une notification dès qu'une décision sera prise.`)
+      alert(`Demande envoyée avec succès !\n\nLes managers de "${team.name}" vont examiner votre demande et vous recevrez une notification dès qu&apos;une décision sera prise.`)
       
       // Rediriger vers le dashboard (ils verront un message en attente)
       router.push('/dashboard')
