@@ -262,7 +262,7 @@ export default function CreateMatchPage() {
       }
 
       alert('Match créé et vote lancé avec succès !')
-      router.push(`/vote/${sessionData.id}/manage`)
+      router.push('/dashboard')
 
     } catch (err) {
       console.error('Erreur création match:', err)
