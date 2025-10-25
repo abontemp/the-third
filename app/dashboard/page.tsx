@@ -478,6 +478,16 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4">
             <NotificationBell />
             <button
+              onClick={() => router.push('/dashboard/profile')}
+              className="flex items-center gap-3 px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 rounded-lg transition border border-white/10"
+              title="Voir mon profil"
+            >
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                {currentUserName[0]?.toUpperCase() || '?'}
+              </div>
+              <span className="text-white hidden sm:inline">{currentUserName}</span>
+            </button>
+            <button
               onClick={handleLogout}
               className="text-white hover:text-red-400 transition flex items-center gap-2"
             >
