@@ -38,40 +38,60 @@ export default function JoinTeamPage() {
       setLoading(true)
 
       // Récupérer toutes les équipes
-      const { data: teamsData } = await supabase
+      const { data: teamsData, error: teamsError } = await supabase
         .from('teams')
-        .select('id, name, sport, created_at, created_by')
+        .select('id, name, sport, created_at')
         .order('created_at', { ascending: false })
+
+      if (teamsError) {
+        console.error('Erreur lors du chargement des équipes:', teamsError)
+        alert('Erreur lors du chargement des équipes')
+        return
+      }
 
       if (!teamsData) {
         setTeams([])
         return
       }
 
-      // Pour chaque équipe, récupérer le nom du créateur et le nombre de membres
+      // Pour chaque équipe, récupérer le créateur et le nombre de membres
       const teamsWithDetails = await Promise.all(
         teamsData.map(async (team) => {
-          // Récupérer le nom du créateur
-          const { data: creatorProfile } = await supabase
-            .from('profiles')
-            .select('first_name, last_name, nickname, email')
-            .eq('id', team.created_by)
+          // Trouver le créateur (membre avec role 'creator')
+          const { data: creator } = await supabase
+            .from('team_members')
+            .select('user_id')
+            .eq('team_id', team.id)
+            .eq('role', 'creator')
             .single()
 
           let creatorName = 'Inconnu'
-          if (creatorProfile) {
-            if (creatorProfile.nickname?.trim()) {
-              creatorName = creatorProfile.nickname.trim()
-            } else if (creatorProfile.first_name || creatorProfile.last_name) {
-              const firstName = creatorProfile.first_name?.trim() || ''
-              const lastName = creatorProfile.last_name?.trim() || ''
-              creatorName = `${firstName} ${lastName}`.trim()
-            } else if (creatorProfile.email) {
-              creatorName = creatorProfile.email
+          let creatorId = ''
+
+          if (creator) {
+            creatorId = creator.user_id
+            
+            // Récupérer le profil du créateur
+            const { data: creatorProfile } = await supabase
+              .from('profiles')
+              .select('first_name, last_name, nickname, email')
+              .eq('id', creator.user_id)
+              .single()
+
+            if (creatorProfile) {
+              if (creatorProfile.nickname?.trim()) {
+                creatorName = creatorProfile.nickname.trim()
+              } else if (creatorProfile.first_name || creatorProfile.last_name) {
+                const firstName = creatorProfile.first_name?.trim() || ''
+                const lastName = creatorProfile.last_name?.trim() || ''
+                creatorName = `${firstName} ${lastName}`.trim()
+              } else if (creatorProfile.email) {
+                creatorName = creatorProfile.email
+              }
             }
           }
 
-          // Compter les membres
+          // Compter les membres acceptés
           const { count } = await supabase
             .from('team_members')
             .select('*', { count: 'exact', head: true })
@@ -83,12 +103,13 @@ export default function JoinTeamPage() {
             sport: team.sport,
             created_at: team.created_at,
             creator_name: creatorName,
-            creator_id: team.created_by,
+            creator_id: creatorId,
             member_count: count || 0
           }
         })
       )
 
+      console.log('Équipes chargées:', teamsWithDetails)
       setTeams(teamsWithDetails)
       setFilteredTeams(teamsWithDetails)
 
