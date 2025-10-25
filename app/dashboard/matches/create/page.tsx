@@ -239,19 +239,27 @@ export default function CreateMatchPage() {
 
       if (participantsError) throw participantsError
 
-      // Créer des notifications pour tous les participants
-      const notifications = selectedMembers.map(member => ({
-        user_id: member.user_id,
-        type: 'vote_opened',
-        title: 'Nouveau vote !',
-        message: `Vote ouvert pour le match contre ${opponent.trim()}`,
-        link: `/vote/${sessionData.id}`,
-        is_read: false
-      }))
+      // Créer des notifications pour tous les participants (optionnel)
+      try {
+        const notifications = selectedMembers.map(member => ({
+          user_id: member.user_id,
+          type: 'vote_opened',
+          title: 'Nouveau vote !',
+          message: `Vote ouvert pour le match contre ${opponent.trim()}`,
+          link: `/vote/${sessionData.id}`,
+          is_read: false
+        }))
 
-      await supabase
-        .from('notifications')
-        .insert(notifications)
+        const { error: notifError } = await supabase
+          .from('notifications')
+          .insert(notifications)
+
+        if (notifError) {
+          console.log('Notifications non envoyées (table peut-être absente):', notifError)
+        }
+      } catch (notifErr) {
+        console.log('Erreur notifications (non bloquant):', notifErr)
+      }
 
       alert('Match créé et vote lancé avec succès !')
       router.push(`/vote/${sessionData.id}/manage`)
