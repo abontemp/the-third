@@ -14,11 +14,11 @@ type TeamMember = {
 export default function CreateMatchPage() {
   const router = useRouter()
   const params = useParams()
-  const teamId = params?.teamId as string
   const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [teamId, setTeamId] = useState<string>('')
   const [opponent, setOpponent] = useState('')
   const [matchDate, setMatchDate] = useState('')
   const [members, setMembers] = useState<TeamMember[]>([])
@@ -29,10 +29,60 @@ export default function CreateMatchPage() {
   const [includeWorstAction, setIncludeWorstAction] = useState(false)
 
   useEffect(() => {
-    loadMembers()
-  }, [teamId]) // eslint-disable-line react-hooks/exhaustive-deps
+    initializePage()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadMembers = async () => {
+  const initializePage = async () => {
+    try {
+      // Essayer de récupérer teamId depuis l'URL
+      let currentTeamId = params?.teamId as string
+
+      // Si pas dans l'URL, essayer depuis localStorage
+      if (!currentTeamId) {
+        const storedTeamId = localStorage.getItem('selectedTeamId')
+        if (storedTeamId) {
+          currentTeamId = storedTeamId
+        }
+      }
+
+      // Si toujours pas de teamId, vérifier l'utilisateur et sa première équipe
+      if (!currentTeamId) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          router.push('/login')
+          return
+        }
+
+        const { data: membership } = await supabase
+          .from('team_members')
+          .select('team_id')
+          .eq('user_id', user.id)
+          .eq('status', 'accepted')
+          .limit(1)
+          .single()
+
+        if (membership) {
+          currentTeamId = membership.team_id
+        }
+      }
+
+      if (!currentTeamId) {
+        alert('Aucune équipe trouvée. Veuillez d\'abord rejoindre ou créer une équipe.')
+        router.push('/dashboard')
+        return
+      }
+
+      setTeamId(currentTeamId)
+      await loadMembers(currentTeamId)
+
+    } catch (err) {
+      console.error('Erreur initialisation:', err)
+      alert('Erreur lors de l\'initialisation')
+      router.push('/dashboard')
+    }
+  }
+
+  const loadMembers = async (currentTeamId: string) => {
     try {
       setLoading(true)
 
@@ -40,7 +90,7 @@ export default function CreateMatchPage() {
       const { data: membersData } = await supabase
         .from('team_members')
         .select('user_id')
-        .eq('team_id', teamId)
+        .eq('team_id', currentTeamId)
         .eq('status', 'accepted')
 
       if (!membersData || membersData.length === 0) {
