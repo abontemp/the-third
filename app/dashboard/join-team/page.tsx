@@ -12,6 +12,8 @@ type Team = {
   creator_name: string
   creator_id: string
   member_count: number
+  user_status?: 'member' | 'pending' | null
+  user_role?: string
 }
 
 export default function JoinTeamPage() {
@@ -37,6 +39,12 @@ export default function JoinTeamPage() {
     try {
       setLoading(true)
 
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
       // Récupérer toutes les équipes
       const { data: teamsData, error: teamsError } = await supabase
         .from('teams')
@@ -53,6 +61,17 @@ export default function JoinTeamPage() {
         setTeams([])
         return
       }
+
+      // Récupérer toutes les adhésions de l'utilisateur en une seule requête
+      const { data: userMemberships } = await supabase
+        .from('team_members')
+        .select('team_id, role, status')
+        .eq('user_id', user.id)
+
+      const membershipMap: Record<string, { role: string; status: string }> = {}
+      userMemberships?.forEach(m => {
+        membershipMap[m.team_id] = { role: m.role, status: m.status }
+      })
 
       // Pour chaque équipe, récupérer le créateur et le nombre de membres
       const teamsWithDetails = await Promise.all(
@@ -97,6 +116,12 @@ export default function JoinTeamPage() {
             .select('*', { count: 'exact', head: true })
             .eq('team_id', team.id)
 
+          // Vérifier le statut de l'utilisateur pour cette équipe
+          const membership = membershipMap[team.id]
+          const userStatus = membership ? 
+            (membership.status === 'accepted' ? 'member' as const : 'pending' as const) : 
+            null
+
           return {
             id: team.id,
             name: team.name,
@@ -104,7 +129,9 @@ export default function JoinTeamPage() {
             created_at: team.created_at,
             creator_name: creatorName,
             creator_id: creatorId,
-            member_count: count || 0
+            member_count: count || 0,
+            user_status: userStatus,
+            user_role: membership?.role
           }
         })
       )
@@ -147,20 +174,14 @@ export default function JoinTeamPage() {
         return
       }
 
-      // Vérifier si l'utilisateur est déjà membre ou a déjà une demande en attente
-      const { data: existingMembership } = await supabase
-        .from('team_members')
-        .select('id, status')
-        .eq('team_id', teamId)
-        .eq('user_id', user.id)
-        .single()
-
-      if (existingMembership) {
-        if (existingMembership.status === 'accepted') {
-          alert('Vous êtes déjà membre de cette équipe !')
-        } else if (existingMembership.status === 'pending') {
-          alert('Vous avez déjà une demande en attente pour cette équipe')
-        }
+      // Vérifier le statut dans les données locales
+      const team = teams.find(t => t.id === teamId)
+      if (team?.user_status === 'member') {
+        alert('Vous êtes déjà membre de cette équipe !')
+        return
+      }
+      if (team?.user_status === 'pending') {
+        alert('Vous avez déjà une demande en attente pour cette équipe')
         return
       }
 
@@ -200,7 +221,9 @@ export default function JoinTeamPage() {
       }
 
       alert('Demande envoyée ! Les managers de l\'équipe vont examiner votre demande.')
-      router.push('/dashboard')
+      
+      // Recharger les équipes pour mettre à jour le statut
+      await loadTeams()
 
     } catch (err) {
       console.error('Erreur demande adhésion:', err)
@@ -232,6 +255,42 @@ export default function JoinTeamPage() {
 
         <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-6 sm:p-8">
           <h1 className="text-3xl font-bold text-white mb-6">Demander à rejoindre une équipe</h1>
+
+          {/* Résumé des adhésions */}
+          {(teams.filter(t => t.user_status === 'member').length > 0 || 
+            teams.filter(t => t.user_status === 'pending').length > 0) && (
+            <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {teams.filter(t => t.user_status === 'member').length > 0 && (
+                <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                    <h3 className="text-green-300 font-semibold">Vos équipes</h3>
+                  </div>
+                  <p className="text-white text-2xl font-bold">
+                    {teams.filter(t => t.user_status === 'member').length}
+                  </p>
+                  <p className="text-green-400 text-sm">
+                    équipe{teams.filter(t => t.user_status === 'member').length > 1 ? 's' : ''}
+                  </p>
+                </div>
+              )}
+              
+              {teams.filter(t => t.user_status === 'pending').length > 0 && (
+                <div className="bg-orange-900/20 border border-orange-500/30 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
+                    <h3 className="text-orange-300 font-semibold">Demandes en attente</h3>
+                  </div>
+                  <p className="text-white text-2xl font-bold">
+                    {teams.filter(t => t.user_status === 'pending').length}
+                  </p>
+                  <p className="text-orange-400 text-sm">
+                    demande{teams.filter(t => t.user_status === 'pending').length > 1 ? 's' : ''}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Barre de recherche */}
           <div className="mb-6">
@@ -306,23 +365,37 @@ export default function JoinTeamPage() {
                         </div>
                       </td>
                       <td className="py-4 px-4 text-right">
-                        <button
-                          onClick={() => handleJoinRequest(team.id)}
-                          disabled={submitting && selectedTeam === team.id}
-                          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ml-auto"
-                        >
-                          {submitting && selectedTeam === team.id ? (
-                            <>
-                              <Loader className="animate-spin" size={16} />
-                              <span>Envoi...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Send size={16} />
-                              <span>Demander</span>
-                            </>
-                          )}
-                        </button>
+                        {team.user_status === 'member' ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="px-4 py-2 bg-green-500/20 text-green-300 rounded-lg font-semibold border border-green-500/30">
+                              ✓ Membre
+                            </span>
+                          </div>
+                        ) : team.user_status === 'pending' ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="px-4 py-2 bg-orange-500/20 text-orange-300 rounded-lg font-semibold border border-orange-500/30">
+                              ⏳ En attente
+                            </span>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleJoinRequest(team.id)}
+                            disabled={submitting && selectedTeam === team.id}
+                            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ml-auto"
+                          >
+                            {submitting && selectedTeam === team.id ? (
+                              <>
+                                <Loader className="animate-spin" size={16} />
+                                <span>Envoi...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Send size={16} />
+                                <span>Demander</span>
+                              </>
+                            )}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -337,12 +410,32 @@ export default function JoinTeamPage() {
               <Send size={18} />
               Comment ça marche ?
             </h3>
-            <ol className="text-gray-300 text-sm space-y-1 list-decimal list-inside">
-              <li>Cliquez sur "Demander" pour l&apos;équipe de votre choix</li>
-              <li>Les managers de l&apos;équipe recevront une notification</li>
-              <li>Vous recevrez une notification lorsqu&apos;ils accepteront votre demande</li>
-              <li>Vous pourrez alors accéder à l&apos;équipe depuis votre dashboard</li>
+            <ol className="text-gray-300 text-sm space-y-1 list-decimal list-inside mb-3">
+              <li>Recherchez l&apos;équipe de votre choix dans la liste</li>
+              <li>Cliquez sur "Demander" pour envoyer votre demande</li>
+              <li>Les managers recevront une notification</li>
+              <li>Vous recevrez une notification lors de leur décision</li>
             </ol>
+            
+            <div className="border-t border-blue-500/30 pt-3 mt-3">
+              <p className="text-gray-400 text-sm font-semibold mb-2">Légende des statuts :</p>
+              <div className="flex flex-wrap gap-2">
+                <span className="px-3 py-1 bg-green-500/20 text-green-300 rounded text-xs border border-green-500/30">
+                  ✓ Membre
+                </span>
+                <span className="text-gray-400 text-xs self-center">
+                  Vous faites partie de cette équipe
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <span className="px-3 py-1 bg-orange-500/20 text-orange-300 rounded text-xs border border-orange-500/30">
+                  ⏳ En attente
+                </span>
+                <span className="text-gray-400 text-xs self-center">
+                  Votre demande est en cours d&apos;examen
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
