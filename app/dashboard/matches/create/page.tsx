@@ -200,12 +200,16 @@ export default function CreateMatchPage() {
           season_id: activeSeason.id,
           opponent: opponent.trim(),
           match_date: matchDate,
+          status: 'scheduled',
           created_by: user.id
         }])
         .select()
         .single()
 
-      if (matchError) throw matchError
+      if (matchError) {
+        console.error('Erreur création match:', matchError)
+        throw matchError
+      }
 
       // Créer la session de vote avec les aspects sélectionnés
       const { data: sessionData, error: sessionError } = await supabase
