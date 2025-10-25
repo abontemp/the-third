@@ -316,12 +316,13 @@ export default function DashboardPage() {
         .from('seasons')
         .select('id')
         .eq('team_id', teamId)
-        .eq('is_current', true)
+        .eq('is_active', true)
         .single()
 
       if (!currentSeason) {
         console.log('❌ Aucune saison active trouvée pour cette équipe')
         console.log('Erreur:', seasonError)
+        console.log('💡 Astuce: Vérifiez qu\'il existe une saison avec is_active=true pour cette équipe')
         setVotingSessions([])
         return
       }
@@ -345,13 +346,21 @@ export default function DashboardPage() {
 
       const sessionsData = await Promise.all(
         matches.map(async (match) => {
-          const { data: session } = await supabase
+          console.log('🔍 Recherche session pour match:', match.id, match.opponent)
+          
+          const { data: session, error: sessionError } = await supabase
             .from('voting_sessions')
             .select('id, status, flop_reader_id, top_reader_id')
             .eq('match_id', match.id)
             .single()
 
-          if (!session) return null
+          if (!session) {
+            console.log('❌ Pas de session trouvée pour match:', match.id)
+            if (sessionError) console.log('Erreur session:', sessionError)
+            return null
+          }
+
+          console.log('✅ Session trouvée:', session.id, 'status:', session.status)
 
           const { data: participation } = await supabase
             .from('session_participants')
@@ -359,6 +368,8 @@ export default function DashboardPage() {
             .eq('session_id', session.id)
             .eq('user_id', user.id)
             .single()
+
+          console.log('👤 Participation:', participation ? 'OUI' : 'NON', participation?.has_voted ? '(déjà voté)' : '(pas encore voté)')
 
           return {
             id: session.id,
@@ -376,6 +387,8 @@ export default function DashboardPage() {
       )
 
       const validSessions = sessionsData.filter(s => s !== null) as VotingSession[]
+      console.log('📊 Sessions valides trouvées:', validSessions.length)
+      console.log('Sessions:', validSessions)
       setVotingSessions(validSessions)
 
     } catch (err) {
