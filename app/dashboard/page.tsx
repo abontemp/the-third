@@ -510,102 +510,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Section des votes en cours et résultats */}
-        {votingSessions.length === 0 ? (
-          <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-8 mb-6 text-center">
-            <Calendar className="text-gray-400 mx-auto mb-4" size={48} />
-            <h3 className="text-xl font-bold text-white mb-2">Aucun match pour le moment</h3>
-            <p className="text-gray-400">
-              {isManager 
-                ? "Créez votre premier match pour commencer à voter !" 
-                : "Les managers créeront bientôt le prochain match."}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {votingSessions
-              .filter(s => s.status === 'open')
-              .map(session => (
-              <div
-                key={session.id}
-                className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-xl p-6"
-              >
-                <div className="flex items-center gap-2 mb-4">
-                  <Vote className="text-green-400" size={24} />
-                  <h3 className="text-xl font-bold text-white">Vote en cours</h3>
-                </div>
-                <p className="text-gray-300 mb-4">
-                  Match contre <span className="font-bold text-white">{session.match.opponent}</span>
-                  <br />
-                  <span className="text-sm text-gray-400">
-                    {new Date(session.match.match_date).toLocaleDateString()}
-                  </span>
-                </p>
-                
-                {session.is_participant ? (
-                  session.has_voted ? (
-                    <div className="flex items-center gap-2 text-green-400">
-                      <CheckCircle size={20} />
-                      <span className="font-semibold">Vous avez voté ✓</span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => router.push(`/vote/${session.id}`)}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition"
-                    >
-                      Voter maintenant
-                    </button>
-                  )
-                ) : (
-                  <button
-                    onClick={() => handleJoinVote(session.id)}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition"
-                  >
-                    Rejoindre ce vote
-                  </button>
-                )}
-                
-                {isManager && (
-                  <button
-                    onClick={() => router.push(`/vote/${session.id}/manage`)}
-                    className="w-full mt-2 bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
-                  >
-                    <Users size={20} />
-                    Gérer le vote
-                  </button>
-                )}
-              </div>
-            ))}
-
-          {votingSessions
-            .filter(s => s.status === 'closed')
-            .map(session => (
-              <div
-                key={session.id}
-                className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-6"
-              >
-                <div className="flex items-center gap-2 mb-4">
-                  <Calendar className="text-purple-400" size={24} />
-                  <h3 className="text-xl font-bold text-white">Résultats disponibles</h3>
-                </div>
-                <p className="text-gray-300 mb-4">
-                  Match contre <span className="font-bold text-white">{session.match.opponent}</span>
-                  <br />
-                  <span className="text-sm text-gray-400">
-                    {new Date(session.match.match_date).toLocaleDateString()}
-                  </span>
-                </p>
-                <button
-                  onClick={() => router.push(`/vote/${session.id}/results`)}
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition"
-                >
-                  Voir les résultats
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
         <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold text-white">Membres de l&apos;équipe</h2>
@@ -663,15 +567,17 @@ export default function DashboardPage() {
         </div>
 
         {/* SECTION VOTES */}
-        {votingSessions.length > 0 && (
+        {votingSessions.filter(s => s.status !== 'completed').length > 0 && (
           <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-6 mb-6">
             <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
               <Vote className="text-purple-400" size={24} />
-              Sessions de vote
+              Sessions de vote en cours
             </h2>
             
             <div className="space-y-4">
-              {votingSessions.map((session) => (
+              {votingSessions
+                .filter(session => session.status !== 'completed')
+                .map((session) => (
                 <div 
                   key={session.id}
                   className="bg-slate-800/50 border border-white/10 rounded-lg p-4"
@@ -714,12 +620,6 @@ export default function DashboardPage() {
                           📖 Lecture en cours
                         </span>
                       )}
-                      
-                      {session.status === 'completed' && (
-                        <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-semibold border border-green-500/30">
-                          ✅ Terminé
-                        </span>
-                      )}
                     </div>
                   </div>
 
@@ -744,17 +644,6 @@ export default function DashboardPage() {
                       >
                         <Vote size={18} />
                         🎤 Commencer la lecture
-                      </button>
-                    )}
-
-                    {/* Vote terminé - voir résultats */}
-                    {session.status === 'completed' && (
-                      <button
-                        onClick={() => router.push(`/vote/${session.id}/results`)}
-                        className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
-                      >
-                        <Award size={18} />
-                        Voir les résultats
                       </button>
                     )}
 
