@@ -1,231 +1,181 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { ArrowLeft, Calendar, Loader, Users } from 'lucide-react'
+import { ArrowLeft, Calendar, Users, Loader, Trophy, TrendingUp, TrendingDown, Sparkles, Flame, CheckCircle } from 'lucide-react'
 
-type Member = {
-  id: string
+type TeamMember = {
   user_id: string
   display_name: string
-  role: string
+  avatar_url?: string
+  selected: boolean
 }
 
 export default function CreateMatchPage() {
   const router = useRouter()
+  const params = useParams()
+  const teamId = params?.teamId as string
   const supabase = createClient()
-  
+
   const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [teamId, setTeamId] = useState('')
-  const [teamName, setTeamName] = useState('')
-  const [members, setMembers] = useState<Member[]>([])
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
-  
+  const [creating, setCreating] = useState(false)
   const [opponent, setOpponent] = useState('')
-  const today = new Date().toISOString().split('T')[0]
-  const [matchDate, setMatchDate] = useState(today)
+  const [matchDate, setMatchDate] = useState('')
+  const [members, setMembers] = useState<TeamMember[]>([])
+  
+  // Aspects du vote
+  const [includePredictions, setIncludePredictions] = useState(false)
+  const [includeBestAction, setIncludeBestAction] = useState(false)
+  const [includeWorstAction, setIncludeWorstAction] = useState(false)
 
   useEffect(() => {
-    loadData()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    loadMembers()
+  }, [teamId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadData = async () => {
+  const loadMembers = async () => {
     try {
       setLoading(true)
-      
+
+      // Récupérer tous les membres acceptés de l'équipe
+      const { data: membersData } = await supabase
+        .from('team_members')
+        .select('user_id')
+        .eq('team_id', teamId)
+        .eq('status', 'accepted')
+
+      if (!membersData || membersData.length === 0) {
+        alert('Aucun membre trouvé dans cette équipe')
+        router.push('/dashboard')
+        return
+      }
+
+      // Récupérer les profils
+      const userIds = membersData.map(m => m.user_id)
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, nickname, email, avatar_url')
+        .in('id', userIds)
+
+      const formattedMembers = membersData.map(member => {
+        const profile = profilesData?.find(p => p.id === member.user_id)
+        
+        let displayName = 'Utilisateur'
+        if (profile) {
+          if (profile.nickname?.trim()) {
+            displayName = profile.nickname.trim()
+          } else if (profile.first_name || profile.last_name) {
+            const firstName = profile.first_name?.trim() || ''
+            const lastName = profile.last_name?.trim() || ''
+            displayName = `${firstName} ${lastName}`.trim()
+          } else if (profile.email) {
+            displayName = profile.email
+          }
+        }
+
+        return {
+          user_id: member.user_id,
+          display_name: displayName,
+          avatar_url: profile?.avatar_url,
+          selected: true // Tous sélectionnés par défaut
+        }
+      })
+
+      setMembers(formattedMembers)
+
+    } catch (err) {
+      console.error('Erreur chargement membres:', err)
+      alert('Erreur lors du chargement des membres')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const toggleMember = (userId: string) => {
+    setMembers(members.map(m => 
+      m.user_id === userId ? { ...m, selected: !m.selected } : m
+    ))
+  }
+
+  const selectAll = () => {
+    setMembers(members.map(m => ({ ...m, selected: true })))
+  }
+
+  const deselectAll = () => {
+    setMembers(members.map(m => ({ ...m, selected: false })))
+  }
+
+  const handleCreateMatch = async () => {
+    if (!opponent.trim()) {
+      alert('Veuillez entrer le nom de l\'adversaire')
+      return
+    }
+
+    if (!matchDate) {
+      alert('Veuillez sélectionner une date de match')
+      return
+    }
+
+    const selectedMembers = members.filter(m => m.selected)
+    if (selectedMembers.length < 2) {
+      alert('Sélectionnez au moins 2 participants pour le vote')
+      return
+    }
+
+    try {
+      setCreating(true)
+
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push('/login')
         return
       }
 
-      // Récupérer l'équipe sélectionnée
-      const savedTeamId = localStorage.getItem('selectedTeamId')
-      if (!savedTeamId) {
-        alert('Aucune équipe sélectionnée')
-        router.push('/dashboard')
-        return
-      }
-
-      setTeamId(savedTeamId)
-
-      // Récupérer les infos de l'équipe
-      const { data: teamData } = await supabase
-        .from('teams')
-        .select('name')
-        .eq('id', savedTeamId)
-        .single()
-
-      if (teamData) {
-        setTeamName(teamData.name)
-      }
-
-      // Récupérer tous les membres de l'équipe
-      const { data: membersData } = await supabase
-        .from('team_members')
-        .select('id, user_id, role, joined_at')
-        .eq('team_id', savedTeamId)
-        .order('joined_at', { ascending: true })
-
-      if (!membersData) {
-        console.log('Aucun membre trouvé')
-        return
-      }
-
-      console.log('Membres trouvés:', membersData.length)
-
-      // Récupérer les noms des membres
-      const membersWithNames = await Promise.all(
-        membersData.map(async (member) => {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('first_name, last_name, email, nickname')
-            .eq('id', member.user_id)
-            .single()
-
-          let displayName = 'Utilisateur'
-          
-          if (profile) {
-            if (profile.nickname?.trim()) {
-              displayName = profile.nickname.trim()
-            } else if (profile.first_name || profile.last_name) {
-              const firstName = profile.first_name?.trim() || ''
-              const lastName = profile.last_name?.trim() || ''
-              displayName = `${firstName} ${lastName}`.trim()
-            } else if (profile.email) {
-              displayName = profile.email
-            }
-          }
-
-          return {
-            id: member.id,
-            user_id: member.user_id,
-            display_name: displayName,
-            role: member.role
-          }
-        })
-      )
-
-      console.log('Membres avec noms:', membersWithNames)
-      setMembers(membersWithNames)
-
-    } catch (err) {
-      console.error('Erreur chargement:', err)
-      alert('Erreur lors du chargement des données')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const toggleMember = (memberId: string) => {
-    setSelectedMembers(prev => {
-      if (prev.includes(memberId)) {
-        return prev.filter(id => id !== memberId)
-      } else {
-        return [...prev, memberId]
-      }
-    })
-  }
-
-  const selectAll = () => {
-    setSelectedMembers(members.map(m => m.user_id))
-  }
-
-  const deselectAll = () => {
-    setSelectedMembers([])
-  }
-
-  const handleSubmit = async () => {
-    if (!opponent.trim()) {
-      alert('Veuillez entrer le nom de l\'adversaire')
-      return
-    }
-
-    if (selectedMembers.length < 2) {
-      alert('Veuillez sélectionner au moins 2 participants')
-      return
-    }
-
-    try {
-      setSubmitting(true)
-
-      // 1. Vérifier/créer la saison active
-      let { data: season } = await supabase
+      // Récupérer la saison active
+      const { data: activeSeason } = await supabase
         .from('seasons')
         .select('id')
         .eq('team_id', teamId)
-        .eq('is_current', true)
+        .eq('is_active', true)
         .single()
 
-      if (!season) {
-        console.log('Création d\'une nouvelle saison...')
-        const currentYear = new Date().getFullYear()
-        const { data: newSeason, error: seasonError } = await supabase
-          .from('seasons')
-          .insert([{
-            team_id: teamId,
-            name: `Saison ${currentYear}`,
-            start_date: `${currentYear}-01-01`,
-            end_date: `${currentYear}-12-31`,
-            is_current: true
-          }])
-          .select()
-          .single()
-
-        if (seasonError || !newSeason) {
-          console.error('Erreur création saison:', seasonError)
-          throw seasonError || new Error('Impossible de créer la saison')
-        }
-        season = newSeason
+      if (!activeSeason) {
+        alert('Aucune saison active trouvée. Créez une saison d\'abord.')
+        return
       }
 
-      if (!season) {
-        throw new Error('Aucune saison disponible')
-      }
-
-      console.log('Saison active:', season.id)
-
-      // 2. Créer le match
-      const { data: match, error: matchError } = await supabase
+      // Créer le match
+      const { data: matchData, error: matchError } = await supabase
         .from('matches')
         .insert([{
-          season_id: season.id,
+          season_id: activeSeason.id,
           opponent: opponent.trim(),
           match_date: matchDate,
-          status: 'scheduled'
+          created_by: user.id
         }])
         .select()
         .single()
 
-      if (matchError) {
-        console.error('Erreur création match:', matchError)
-        throw matchError
-      }
+      if (matchError) throw matchError
 
-      console.log('Match créé:', match.id)
-
-      // 3. Créer la session de vote
-      const { data: votingSession, error: sessionError } = await supabase
+      // Créer la session de vote avec les aspects sélectionnés
+      const { data: sessionData, error: sessionError } = await supabase
         .from('voting_sessions')
         .insert([{
-          match_id: match.id,
-          status: 'open'
+          match_id: matchData.id,
+          status: 'open',
+          include_predictions: includePredictions,
+          include_best_action: includeBestAction,
+          include_worst_action: includeWorstAction
         }])
         .select()
         .single()
 
-      if (sessionError) {
-        console.error('Erreur création session:', sessionError)
-        throw sessionError
-      }
+      if (sessionError) throw sessionError
 
-      console.log('Session de vote créée:', votingSession.id)
-
-      // 4. Ajouter les participants
-      const participants = selectedMembers.map(userId => ({
-        session_id: votingSession.id,
-        user_id: userId,
+      // Ajouter les participants
+      const participants = selectedMembers.map(member => ({
+        session_id: sessionData.id,
+        user_id: member.user_id,
         has_voted: false
       }))
 
@@ -233,168 +183,296 @@ export default function CreateMatchPage() {
         .from('session_participants')
         .insert(participants)
 
-      if (participantsError) {
-        console.error('Erreur ajout participants:', participantsError)
-        throw participantsError
-      }
+      if (participantsError) throw participantsError
 
-      console.log('Participants ajoutés:', participants.length)
+      // Créer des notifications pour tous les participants
+      const notifications = selectedMembers.map(member => ({
+        user_id: member.user_id,
+        type: 'vote_opened',
+        title: 'Nouveau vote !',
+        message: `Vote ouvert pour le match contre ${opponent.trim()}`,
+        link: `/vote/${sessionData.id}`,
+        is_read: false
+      }))
 
-      alert('Match et session de vote créés avec succès !')
-      router.push('/dashboard')
+      await supabase
+        .from('notifications')
+        .insert(notifications)
+
+      alert('Match créé et vote lancé avec succès !')
+      router.push(`/vote/${sessionData.id}/manage`)
 
     } catch (err) {
-      console.error('Erreur:', err)
+      console.error('Erreur création match:', err)
       alert('Erreur lors de la création du match')
     } finally {
-      setSubmitting(false)
+      setCreating(false)
     }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <Loader className="animate-spin text-purple-400" size={48} />
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+        <Loader className="animate-spin text-blue-400" size={48} />
       </div>
     )
   }
 
+  const selectedCount = members.filter(m => m.selected).length
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 sm:p-8">
-      <div className="max-w-3xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-4 sm:p-8">
+      <div className="max-w-4xl mx-auto">
         <button
           onClick={() => router.push('/dashboard')}
-          className="text-purple-300 hover:text-purple-100 mb-6 flex items-center gap-2"
+          className="text-blue-300 hover:text-blue-100 mb-6 flex items-center gap-2 transition"
         >
           <ArrowLeft size={20} />
           Retour au dashboard
         </button>
 
         <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-6 sm:p-8">
-          <h1 className="text-3xl font-bold text-white mb-6">Créer un match et lancer le vote</h1>
-          <p className="text-gray-400 mb-8">Équipe : {teamName}</p>
+          <h1 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <Trophy className="text-yellow-400" size={32} />
+            Créer un match et lancer les votes
+          </h1>
 
-          {/* Informations du match */}
-          <div className="space-y-6 mb-8">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              <Calendar size={24} />
-              Informations du match
-            </h2>
+          <div className="space-y-6">
+            {/* Informations du match */}
+            <div className="bg-slate-700/30 rounded-lg p-6 border border-white/10">
+              <h2 className="text-xl font-semibold text-white mb-4">Informations du match</h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Adversaire
+                  </label>
+                  <input
+                    type="text"
+                    value={opponent}
+                    onChange={(e) => setOpponent(e.target.value)}
+                    placeholder="Nom de l'équipe adverse"
+                    className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Adversaire *
-              </label>
-              <input
-                type="text"
-                value={opponent}
-                onChange={(e) => setOpponent(e.target.value)}
-                placeholder="Ex: Royal Leopold Club"
-                className="w-full px-4 py-3 bg-slate-700/50 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Date du match
+                  </label>
+                  <div className="relative">
+                    <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                    <input
+                      type="date"
+                      value={matchDate}
+                      onChange={(e) => setMatchDate(e.target.value)}
+                      className="w-full pl-12 pr-4 py-3 bg-slate-700/50 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Date du match *
-              </label>
-              <input
-                type="date"
-                value={matchDate}
-                onChange={(e) => setMatchDate(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-700/50 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
-          </div>
-
-          {/* Sélection des participants */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <Users size={24} />
-                Participants au vote ({selectedMembers.length}/{members.length})
+            {/* Aspects du vote */}
+            <div className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 rounded-lg p-6 border border-purple-500/30">
+              <h2 className="text-xl font-semibold text-white mb-2 flex items-center gap-2">
+                <Sparkles className="text-purple-400" size={24} />
+                Aspects du vote
               </h2>
-              <div className="flex gap-2">
+              <p className="text-gray-400 text-sm mb-4">
+                Les votes TOP et FLOP sont obligatoires. Cochez les aspects supplémentaires à inclure :
+              </p>
+
+              <div className="space-y-3">
+                {/* TOP et FLOP (obligatoires) */}
+                <div className="bg-slate-700/50 rounded-lg p-4 border border-green-500/30">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="text-green-400" size={20} />
+                    <div className="flex-1">
+                      <h3 className="text-white font-semibold flex items-center gap-2">
+                        <TrendingUp className="text-green-400" size={18} />
+                        Vote TOP
+                        <span className="ml-2 px-2 py-0.5 bg-green-500/20 text-green-300 text-xs rounded">Obligatoire</span>
+                      </h3>
+                      <p className="text-gray-400 text-sm">Meilleur joueur du match</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-700/50 rounded-lg p-4 border border-red-500/30">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="text-red-400" size={20} />
+                    <div className="flex-1">
+                      <h3 className="text-white font-semibold flex items-center gap-2">
+                        <TrendingDown className="text-red-400" size={18} />
+                        Vote FLOP
+                        <span className="ml-2 px-2 py-0.5 bg-red-500/20 text-red-300 text-xs rounded">Obligatoire</span>
+                      </h3>
+                      <p className="text-gray-400 text-sm">Moins bon joueur du match</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Prédictions (optionnel) */}
                 <button
-                  onClick={selectAll}
-                  className="text-sm bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded transition"
+                  onClick={() => setIncludePredictions(!includePredictions)}
+                  className={`w-full rounded-lg p-4 border transition ${
+                    includePredictions
+                      ? 'bg-purple-500/20 border-purple-500/50'
+                      : 'bg-slate-700/30 border-white/10 hover:border-purple-500/30'
+                  }`}
                 >
-                  Tous
+                  <div className="flex items-center gap-3">
+                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
+                      includePredictions ? 'bg-purple-600 border-purple-600' : 'border-gray-400'
+                    }`}>
+                      {includePredictions && <CheckCircle className="text-white" size={16} />}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <h3 className="text-white font-semibold flex items-center gap-2">
+                        <Trophy className="text-purple-400" size={18} />
+                        Prédictions TOP/FLOP
+                      </h3>
+                      <p className="text-gray-400 text-sm">
+                        Les votants doivent prédire qui sera TOP/FLOP avant de voter
+                      </p>
+                    </div>
+                  </div>
                 </button>
+
+                {/* Plus beau geste (optionnel) */}
                 <button
-                  onClick={deselectAll}
-                  className="text-sm bg-slate-600 hover:bg-slate-700 text-white px-3 py-1 rounded transition"
+                  onClick={() => setIncludeBestAction(!includeBestAction)}
+                  className={`w-full rounded-lg p-4 border transition ${
+                    includeBestAction
+                      ? 'bg-blue-500/20 border-blue-500/50'
+                      : 'bg-slate-700/30 border-white/10 hover:border-blue-500/30'
+                  }`}
                 >
-                  Aucun
+                  <div className="flex items-center gap-3">
+                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
+                      includeBestAction ? 'bg-blue-600 border-blue-600' : 'border-gray-400'
+                    }`}>
+                      {includeBestAction && <CheckCircle className="text-white" size={16} />}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <h3 className="text-white font-semibold flex items-center gap-2">
+                        <Sparkles className="text-blue-400" size={18} />
+                        Plus beau geste
+                      </h3>
+                      <p className="text-gray-400 text-sm">
+                        Vote pour l&apos;action la plus impressionnante du match
+                      </p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Plus beau fail (optionnel) */}
+                <button
+                  onClick={() => setIncludeWorstAction(!includeWorstAction)}
+                  className={`w-full rounded-lg p-4 border transition ${
+                    includeWorstAction
+                      ? 'bg-orange-500/20 border-orange-500/50'
+                      : 'bg-slate-700/30 border-white/10 hover:border-orange-500/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
+                      includeWorstAction ? 'bg-orange-600 border-orange-600' : 'border-gray-400'
+                    }`}>
+                      {includeWorstAction && <CheckCircle className="text-white" size={16} />}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <h3 className="text-white font-semibold flex items-center gap-2">
+                        <Flame className="text-orange-400" size={18} />
+                        Plus beau fail
+                      </h3>
+                      <p className="text-gray-400 text-sm">
+                        Vote pour l&apos;action la plus ratée du match
+                      </p>
+                    </div>
+                  </div>
                 </button>
               </div>
             </div>
 
-            {members.length === 0 ? (
-              <div className="bg-orange-900/20 border border-orange-500/30 rounded-lg p-4 text-orange-300">
-                ⚠️ Aucun membre trouvé dans l&apos;équipe
+            {/* Sélection des participants */}
+            <div className="bg-slate-700/30 rounded-lg p-6 border border-white/10">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-white">
+                  Participants au vote ({selectedCount}/{members.length})
+                </h2>
+                <div className="flex gap-2">
+                  <button
+                    onClick={selectAll}
+                    className="text-sm text-blue-400 hover:text-blue-300 transition"
+                  >
+                    Tout sélectionner
+                  </button>
+                  <span className="text-gray-500">|</span>
+                  <button
+                    onClick={deselectAll}
+                    className="text-sm text-gray-400 hover:text-gray-300 transition"
+                  >
+                    Tout désélectionner
+                  </button>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {members.map((member) => (
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {members.map(member => (
                   <button
                     key={member.user_id}
                     onClick={() => toggleMember(member.user_id)}
-                    className={`w-full flex items-center justify-between p-4 rounded-lg border-2 transition ${
-                      selectedMembers.includes(member.user_id)
-                        ? 'bg-purple-600/30 border-purple-500'
-                        : 'bg-slate-700/30 border-white/10 hover:border-white/30'
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition ${
+                      member.selected
+                        ? 'bg-blue-500/20 border-blue-500/50'
+                        : 'bg-slate-700/30 border-white/10 hover:border-white/20'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
-                        selectedMembers.includes(member.user_id)
-                          ? 'bg-purple-600 border-purple-600'
-                          : 'border-gray-400'
-                      }`}>
-                        {selectedMembers.includes(member.user_id) && (
-                          <svg className="w-4 h-4 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
-                            <path d="M5 13l4 4L19 7"></path>
-                          </svg>
-                        )}
-                      </div>
-                      <span className="text-white font-medium">{member.display_name}</span>
-                    </div>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      member.role === 'creator' ? 'bg-yellow-500/20 text-yellow-300' :
-                      member.role === 'manager' ? 'bg-purple-500/20 text-purple-300' :
-                      'bg-blue-500/20 text-blue-300'
+                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
+                      member.selected ? 'bg-blue-600 border-blue-600' : 'border-gray-400'
                     }`}>
-                      {member.role === 'creator' ? 'Créateur' :
-                       member.role === 'manager' ? 'Manager' : 'Membre'}
+                      {member.selected && <Users className="text-white" size={14} />}
+                    </div>
+                    
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center overflow-hidden">
+                      {member.avatar_url ? (
+                        <img src={member.avatar_url} alt={member.display_name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-white font-bold text-sm">
+                          {member.display_name[0]?.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <span className="text-white font-medium flex-1 text-left">
+                      {member.display_name}
                     </span>
                   </button>
                 ))}
               </div>
-            )}
+            </div>
+
+            {/* Bouton de création */}
+            <button
+              onClick={handleCreateMatch}
+              disabled={creating || selectedCount < 2 || !opponent.trim() || !matchDate}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-4 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {creating ? (
+                <>
+                  <Loader className="animate-spin" size={20} />
+                  Création en cours...
+                </>
+              ) : (
+                <>
+                  <Trophy size={20} />
+                  Créer le match et lancer les votes
+                </>
+              )}
+            </button>
           </div>
-
-          {/* Bouton de soumission */}
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || !opponent.trim() || selectedMembers.length < 2}
-            className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white py-4 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {submitting ? (
-              <>
-                <Loader className="animate-spin" size={20} />
-                <span>Création en cours...</span>
-              </>
-            ) : (
-              <span>Créer le match et lancer le vote</span>
-            )}
-          </button>
-
-          {selectedMembers.length < 2 && (
-            <p className="text-orange-400 text-sm mt-2 text-center">
-              Veuillez sélectionner au moins 2 participants
-            </p>
-          )}
         </div>
       </div>
     </div>

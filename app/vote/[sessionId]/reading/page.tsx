@@ -1,27 +1,32 @@
 'use client'
-
-import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, ChevronRight, ThumbsDown, Trophy, Loader } from 'lucide-react'
+import { useRouter, useParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { ArrowLeft, Loader, TrendingUp, TrendingDown, Sparkles, Flame, Trophy, Eye, EyeOff, ArrowRight } from 'lucide-react'
 
 type Vote = {
   id: string
-  top_player_id: string
-  top_justification: string
-  flop_player_id: string
-  flop_justification: string
-  voter: {
-    first_name?: string
-    last_name?: string
-    email?: string
-  }
+  user_name: string
+  top_player_name: string
+  top_comment: string
+  flop_player_name: string
+  flop_comment: string
+  predicted_top_name?: string
+  predicted_flop_name?: string
+  best_action_player_name?: string
+  best_action_comment?: string
+  worst_action_player_name?: string
+  worst_action_comment?: string
 }
 
 type VotingSession = {
   id: string
-  flop_reader_id: string
+  status: string
   top_reader_id: string
+  flop_reader_id: string
+  include_predictions: boolean
+  include_best_action: boolean
+  include_worst_action: boolean
   match: {
     opponent: string
     match_date: string
@@ -31,16 +36,16 @@ type VotingSession = {
 export default function ReadingPage() {
   const router = useRouter()
   const params = useParams()
-  const sessionId = params.sessionId as string
+  const sessionId = params?.sessionId as string
+  const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState<VotingSession | null>(null)
   const [votes, setVotes] = useState<Vote[]>([])
   const [currentVoteIndex, setCurrentVoteIndex] = useState(0)
-  const [readingPhase, setReadingPhase] = useState<'flop' | 'top' | 'finished'>('flop')
   const [isReader, setIsReader] = useState(false)
-  const [readerType, setReaderType] = useState<'flop' | 'top' | null>(null)
-  const [isManager, setIsManager] = useState(false)
+  const [readingPhase, setReadingPhase] = useState<'predictions' | 'top' | 'flop' | 'best_action' | 'worst_action' | 'done'>('predictions')
+  const [showComment, setShowComment] = useState(false)
 
   useEffect(() => {
     loadReadingData()
@@ -48,156 +53,201 @@ export default function ReadingPage() {
 
   const loadReadingData = async () => {
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      setLoading(true)
 
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push('/login')
         return
       }
 
+      // Récupérer la session
       const { data: sessionData } = await supabase
         .from('voting_sessions')
         .select(`
           id,
-          flop_reader_id,
+          status,
           top_reader_id,
-          match_id,
-          matches (
-            opponent,
-            match_date,
-            season_id
-          )
+          flop_reader_id,
+          include_predictions,
+          include_best_action,
+          include_worst_action,
+          match:match_id(opponent, match_date)
         `)
         .eq('id', sessionId)
         .single()
 
-      if (!sessionData) {
+      if (!sessionData || sessionData.status !== 'reading') {
+        alert('Cette session n\'est pas en mode lecture')
+        router.push('/dashboard')
         return
       }
 
-      const matchData = Array.isArray(sessionData.matches)
-        ? sessionData.matches[0]
-        : sessionData.matches
-
-      // Vérifier si l'utilisateur est manager
-      if (matchData?.season_id) {
-        const { data: seasonData } = await supabase
-          .from('seasons')
-          .select('team_id')
-          .eq('id', matchData.season_id)
-          .single()
-
-        if (seasonData?.team_id) {
-          const { data: memberData } = await supabase
-            .from('team_members')
-            .select('role')
-            .eq('team_id', seasonData.team_id)
-            .eq('user_id', user.id)
-            .single()
-
-          if (memberData && (memberData.role === 'manager' || memberData.role === 'creator')) {
-            setIsManager(true)
-          }
-        }
-      }
-
-      setSession({
+      const sessionFormatted: VotingSession = {
         id: sessionData.id,
-        flop_reader_id: sessionData.flop_reader_id,
+        status: sessionData.status,
         top_reader_id: sessionData.top_reader_id,
-        match: {
-          opponent: matchData?.opponent || '',
-          match_date: matchData?.match_date || ''
-        }
-      })
-
-      if (sessionData.flop_reader_id === user.id) {
-        setIsReader(true)
-        setReaderType('flop')
-      } else if (sessionData.top_reader_id === user.id) {
-        setIsReader(true)
-        setReaderType('top')
+        flop_reader_id: sessionData.flop_reader_id,
+        include_predictions: sessionData.include_predictions,
+        include_best_action: sessionData.include_best_action,
+        include_worst_action: sessionData.include_worst_action,
+        match: Array.isArray(sessionData.match) ? sessionData.match[0] : sessionData.match
       }
 
+      setSession(sessionFormatted)
+      setIsReader(user.id === sessionFormatted.top_reader_id || user.id === sessionFormatted.flop_reader_id)
+
+      // Définir la phase initiale
+      if (sessionFormatted.include_predictions) {
+        setReadingPhase('predictions')
+      } else {
+        setReadingPhase('top')
+      }
+
+      // Récupérer tous les votes
       const { data: votesData } = await supabase
         .from('votes')
         .select(`
           id,
+          user_id,
           top_player_id,
-          top_justification,
+          top_comment,
           flop_player_id,
-          flop_justification,
-          voter_id
+          flop_comment,
+          predicted_top_id,
+          predicted_flop_id,
+          best_action_player_id,
+          best_action_comment,
+          worst_action_player_id,
+          worst_action_comment
         `)
         .eq('session_id', sessionId)
 
-      const votesWithProfiles = votesData?.map(vote => {
-        return {
-          ...vote,
-          voter: {
-            first_name: 'Anonyme',
-            last_name: '',
-            email: ''
-          }
-        }
-      }) || []
+      if (!votesData || votesData.length === 0) {
+        alert('Aucun vote trouvé')
+        return
+      }
 
-      const shuffledVotes = [...votesWithProfiles].sort(() => Math.random() - 0.5)
-      setVotes(shuffledVotes)
+      // Récupérer tous les user IDs uniques
+      const allUserIds = new Set<string>()
+      votesData.forEach(vote => {
+        allUserIds.add(vote.user_id)
+        allUserIds.add(vote.top_player_id)
+        allUserIds.add(vote.flop_player_id)
+        if (vote.predicted_top_id) allUserIds.add(vote.predicted_top_id)
+        if (vote.predicted_flop_id) allUserIds.add(vote.predicted_flop_id)
+        if (vote.best_action_player_id) allUserIds.add(vote.best_action_player_id)
+        if (vote.worst_action_player_id) allUserIds.add(vote.worst_action_player_id)
+      })
+
+      // Récupérer les profils
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, nickname, email')
+        .in('id', Array.from(allUserIds))
+
+      const getDisplayName = (userId: string) => {
+        const profile = profilesData?.find(p => p.id === userId)
+        if (!profile) return 'Inconnu'
+        
+        if (profile.nickname?.trim()) return profile.nickname.trim()
+        if (profile.first_name || profile.last_name) {
+          const firstName = profile.first_name?.trim() || ''
+          const lastName = profile.last_name?.trim() || ''
+          return `${firstName} ${lastName}`.trim()
+        }
+        if (profile.email) return profile.email
+        return 'Inconnu'
+      }
+
+      // Formater les votes
+      const formattedVotes: Vote[] = votesData.map(vote => ({
+        id: vote.id,
+        user_name: getDisplayName(vote.user_id),
+        top_player_name: getDisplayName(vote.top_player_id),
+        top_comment: vote.top_comment,
+        flop_player_name: getDisplayName(vote.flop_player_id),
+        flop_comment: vote.flop_comment,
+        predicted_top_name: vote.predicted_top_id ? getDisplayName(vote.predicted_top_id) : undefined,
+        predicted_flop_name: vote.predicted_flop_id ? getDisplayName(vote.predicted_flop_id) : undefined,
+        best_action_player_name: vote.best_action_player_id ? getDisplayName(vote.best_action_player_id) : undefined,
+        best_action_comment: vote.best_action_comment || undefined,
+        worst_action_player_name: vote.worst_action_player_id ? getDisplayName(vote.worst_action_player_id) : undefined,
+        worst_action_comment: vote.worst_action_comment || undefined
+      }))
+
+      setVotes(formattedVotes)
 
     } catch (err) {
-      console.error('Erreur:', err)
+      console.error('Erreur chargement:', err)
+      alert('Erreur lors du chargement')
     } finally {
       setLoading(false)
     }
   }
 
   const handleNextVote = () => {
+    setShowComment(false)
     if (currentVoteIndex < votes.length - 1) {
       setCurrentVoteIndex(currentVoteIndex + 1)
     } else {
-      if (readingPhase === 'flop') {
-        setReadingPhase('top')
-        setCurrentVoteIndex(0)
-      } else {
-        setReadingPhase('finished')
-      }
+      handleNextPhase()
+    }
+  }
+
+  const handleNextPhase = () => {
+    setCurrentVoteIndex(0)
+    setShowComment(false)
+
+    if (readingPhase === 'predictions') {
+      setReadingPhase('top')
+    } else if (readingPhase === 'top') {
+      setReadingPhase('flop')
+    } else if (readingPhase === 'flop' && session?.include_best_action) {
+      setReadingPhase('best_action')
+    } else if (readingPhase === 'flop' && session?.include_worst_action) {
+      setReadingPhase('worst_action')
+    } else if (readingPhase === 'best_action' && session?.include_worst_action) {
+      setReadingPhase('worst_action')
+    } else {
+      setReadingPhase('done')
     }
   }
 
   const handleFinishReading = async () => {
     try {
-      const supabase = createClient()
-      
-      await supabase
+      // Marquer la session comme terminée
+      const { error } = await supabase
         .from('voting_sessions')
-        .update({ status: 'closed' })
+        .update({ status: 'completed' })
         .eq('id', sessionId)
+
+      if (error) throw error
 
       router.push(`/vote/${sessionId}/results`)
 
     } catch (err) {
       console.error('Erreur:', err)
+      alert('Erreur lors de la finalisation')
     }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
-        <Loader className="text-white animate-spin" size={48} />
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <Loader className="animate-spin text-purple-400" size={48} />
       </div>
     )
   }
 
-  if (votes.length === 0) {
+  if (!session || votes.length === 0) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-8 max-w-md text-center">
-          <p className="text-white text-xl mb-4">Aucun vote à lire</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-8 max-w-md text-center">
+          <h2 className="text-2xl font-bold text-white mb-2">Erreur</h2>
           <button
             onClick={() => router.push('/dashboard')}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
+            className="mt-4 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
           >
             Retour au dashboard
           </button>
@@ -207,144 +257,271 @@ export default function ReadingPage() {
   }
 
   const currentVote = votes[currentVoteIndex]
-  const currentJustification = readingPhase === 'flop' 
-    ? currentVote.flop_justification 
-    : currentVote.top_justification
 
-  const canControl = isManager || (isReader && readerType === readingPhase)
+  // Phase terminée
+  if (readingPhase === 'done') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-2xl p-8 max-w-md text-center">
+          <Trophy className="text-green-400 mx-auto mb-4" size={64} />
+          <h2 className="text-3xl font-bold text-white mb-4">Lecture terminée !</h2>
+          <p className="text-gray-300 mb-6">
+            Tous les votes ont été lus. Vous pouvez maintenant voir les résultats.
+          </p>
+          {isReader && (
+            <button
+              onClick={handleFinishReading}
+              className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-4 rounded-lg font-semibold transition mb-4"
+            >
+              Voir les résultats
+            </button>
+          )}
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="w-full bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg font-semibold transition"
+          >
+            Retour au dashboard
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="flex items-center gap-2 text-gray-400 hover:text-white transition"
-            >
-              <ArrowLeft size={20} />
-              <span>Dashboard</span>
-            </button>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 sm:p-8">
+      <div className="max-w-3xl mx-auto">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="text-purple-300 hover:text-purple-100 mb-6 flex items-center gap-2 transition"
+        >
+          <ArrowLeft size={20} />
+          Retour au dashboard
+        </button>
 
-            <div className="text-right">
-              <h2 className="text-white font-semibold">{session?.match.opponent}</h2>
-              <p className="text-gray-400 text-sm">
-                Lecture des votes
-                {isManager && <span className="ml-2 text-yellow-400">(Manager)</span>}
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Indicateur de phase */}
-        <div className="mb-8">
-          <div className="flex items-center justify-center gap-8">
-            <div className={`flex items-center gap-2 ${readingPhase === 'flop' ? 'opacity-100' : 'opacity-40'}`}>
-              <ThumbsDown className={readingPhase === 'flop' ? 'text-orange-400' : 'text-gray-500'} size={24} />
-              <span className="text-white font-semibold">Phase FLOP</span>
-            </div>
-            <ChevronRight className="text-gray-500" size={24} />
-            <div className={`flex items-center gap-2 ${readingPhase === 'top' ? 'opacity-100' : 'opacity-40'}`}>
-              <Trophy className={readingPhase === 'top' ? 'text-blue-400' : 'text-gray-500'} size={24} />
-              <span className="text-white font-semibold">Phase TOP</span>
-            </div>
-          </div>
-          <div className="mt-4 text-center">
-            <p className="text-gray-400 text-sm">
-              {readingPhase !== 'finished' && `Vote ${currentVoteIndex + 1} sur ${votes.length}`}
+        <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-6 sm:p-8">
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-white mb-2">Lecture des votes</h1>
+            <p className="text-gray-300">
+              Match contre <span className="font-semibold text-purple-300">{session.match.opponent}</span>
             </p>
           </div>
-        </div>
 
-        {/* Contenu selon la phase */}
-        {readingPhase === 'finished' ? (
-          // Écran de fin
-          <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-2xl p-12 text-center">
-            <Trophy className="text-yellow-400 mx-auto mb-6" size={80} />
-            <h2 className="text-4xl font-bold text-white mb-4">🎉 Lecture terminée ! 🎉</h2>
-            <p className="text-gray-300 mb-8 text-lg">
-              Il est temps de découvrir le podium !
-            </p>
-            
-            {(isManager || isReader) && (
-              <button
-                onClick={handleFinishReading}
-                className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-8 py-4 rounded-lg text-xl font-bold hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-3 mx-auto"
-              >
-                <Trophy size={28} />
-                🏆 Voir le podium final
-              </button>
-            )}
-
-            {!isManager && !isReader && (
-              <p className="text-gray-400 text-sm mt-4">
-                Le lecteur va annoncer le podium...
-              </p>
-            )}
+          {/* Phase indicator */}
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {readingPhase === 'predictions' && (
+                <>
+                  <Trophy className="text-purple-400" size={24} />
+                  <span className="text-white font-semibold">🔮 Prédictions</span>
+                </>
+              )}
+              {readingPhase === 'top' && (
+                <>
+                  <TrendingUp className="text-green-400" size={24} />
+                  <span className="text-white font-semibold">Votes TOP</span>
+                </>
+              )}
+              {readingPhase === 'flop' && (
+                <>
+                  <TrendingDown className="text-red-400" size={24} />
+                  <span className="text-white font-semibold">Votes FLOP</span>
+                </>
+              )}
+              {readingPhase === 'best_action' && (
+                <>
+                  <Sparkles className="text-blue-400" size={24} />
+                  <span className="text-white font-semibold">Plus beaux gestes</span>
+                </>
+              )}
+              {readingPhase === 'worst_action' && (
+                <>
+                  <Flame className="text-orange-400" size={24} />
+                  <span className="text-white font-semibold">Plus beaux fails</span>
+                </>
+              )}
+            </div>
+            <span className="text-gray-400">
+              Vote {currentVoteIndex + 1} / {votes.length}
+            </span>
           </div>
-        ) : (
-          // Lecture en cours
-          <>
-            <div className={`bg-gradient-to-br ${
-              readingPhase === 'flop' 
-                ? 'from-orange-900/30 to-red-900/30 border-orange-500/30' 
-                : 'from-blue-900/30 to-purple-900/30 border-blue-500/30'
-            } border rounded-2xl p-8 mb-6`}>
-              <div className="flex items-center gap-3 mb-6">
-                {readingPhase === 'flop' ? (
-                  <ThumbsDown className="text-orange-400" size={40} />
-                ) : (
-                  <Trophy className="text-blue-400" size={40} />
-                )}
+
+          {/* Vote card */}
+          <div className={`rounded-xl p-6 border mb-6 ${
+            readingPhase === 'predictions' ? 'bg-purple-900/30 border-purple-500/30' :
+            readingPhase === 'top' ? 'bg-green-900/30 border-green-500/30' :
+            readingPhase === 'flop' ? 'bg-red-900/30 border-red-500/30' :
+            readingPhase === 'best_action' ? 'bg-blue-900/30 border-blue-500/30' :
+            'bg-orange-900/30 border-orange-500/30'
+          }`}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-white">
+                Vote de {currentVote.user_name}
+              </h3>
+            </div>
+
+            {/* Contenu selon la phase */}
+            {readingPhase === 'predictions' && (
+              <div className="space-y-4">
                 <div>
-                  <h2 className="text-2xl font-bold text-white">
-                    {readingPhase === 'flop' ? 'FLOP' : 'TOP'}
-                  </h2>
+                  <p className="text-gray-400 text-sm mb-1">Prédiction TOP</p>
+                  <p className="text-white text-xl font-semibold">
+                    {currentVote.predicted_top_name || 'Aucune prédiction'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Prédiction FLOP</p>
+                  <p className="text-white text-xl font-semibold">
+                    {currentVote.predicted_flop_name || 'Aucune prédiction'}
+                  </p>
                 </div>
               </div>
+            )}
 
-              <div className="bg-slate-800/50 rounded-lg p-6 border border-white/10">
-                <p className="text-white text-lg leading-relaxed whitespace-pre-wrap">
-                  {currentJustification}
-                </p>
+            {readingPhase === 'top' && (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">A voté pour</p>
+                  <p className="text-green-400 text-2xl font-bold">
+                    {currentVote.top_player_name}
+                  </p>
+                </div>
+                
+                <div>
+                  <button
+                    onClick={() => setShowComment(!showComment)}
+                    className="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition mb-2"
+                  >
+                    {showComment ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showComment ? 'Masquer le commentaire' : 'Voir le commentaire'}
+                  </button>
+                  
+                  {showComment && (
+                    <div className="bg-slate-700/50 rounded-lg p-4 border border-white/10">
+                      <p className="text-white italic">&ldquo;{currentVote.top_comment}&rdquo;</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
-            {canControl && (
-              <button
-                onClick={handleNextVote}
-                className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition flex items-center justify-center gap-2"
-              >
-                {currentVoteIndex < votes.length - 1 ? (
+            {readingPhase === 'flop' && (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">A voté pour</p>
+                  <p className="text-red-400 text-2xl font-bold">
+                    {currentVote.flop_player_name}
+                  </p>
+                </div>
+                
+                <div>
+                  <button
+                    onClick={() => setShowComment(!showComment)}
+                    className="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition mb-2"
+                  >
+                    {showComment ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showComment ? 'Masquer le commentaire' : 'Voir le commentaire'}
+                  </button>
+                  
+                  {showComment && (
+                    <div className="bg-slate-700/50 rounded-lg p-4 border border-white/10">
+                      <p className="text-white italic">&ldquo;{currentVote.flop_comment}&rdquo;</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {readingPhase === 'best_action' && (
+              <div className="space-y-4">
+                {currentVote.best_action_player_name ? (
                   <>
-                    <span>Vote suivant</span>
-                    <ChevronRight size={20} />
-                  </>
-                ) : readingPhase === 'flop' ? (
-                  <>
-                    <span>Passer aux votes TOP</span>
-                    <ChevronRight size={20} />
+                    <div>
+                      <p className="text-gray-400 text-sm mb-1">Joueur</p>
+                      <p className="text-blue-400 text-2xl font-bold">
+                        {currentVote.best_action_player_name}
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <button
+                        onClick={() => setShowComment(!showComment)}
+                        className="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition mb-2"
+                      >
+                        {showComment ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {showComment ? 'Masquer la description' : 'Voir la description'}
+                      </button>
+                      
+                      {showComment && currentVote.best_action_comment && (
+                        <div className="bg-slate-700/50 rounded-lg p-4 border border-white/10">
+                          <p className="text-white italic">&ldquo;{currentVote.best_action_comment}&rdquo;</p>
+                        </div>
+                      )}
+                    </div>
                   </>
                 ) : (
-                  <>
-                    <span>Terminer la lecture</span>
-                    <Trophy size={20} />
-                  </>
+                  <p className="text-gray-400 italic">Aucun vote pour le plus beau geste</p>
                 )}
-              </button>
-            )}
-
-            {!canControl && (
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-center">
-                <p className="text-blue-300">
-                  Suivez la lecture. Le lecteur passera au vote suivant.
-                </p>
               </div>
             )}
-          </>
-        )}
+
+            {readingPhase === 'worst_action' && (
+              <div className="space-y-4">
+                {currentVote.worst_action_player_name ? (
+                  <>
+                    <div>
+                      <p className="text-gray-400 text-sm mb-1">Joueur</p>
+                      <p className="text-orange-400 text-2xl font-bold">
+                        {currentVote.worst_action_player_name}
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <button
+                        onClick={() => setShowComment(!showComment)}
+                        className="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition mb-2"
+                      >
+                        {showComment ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {showComment ? 'Masquer la description' : 'Voir la description'}
+                      </button>
+                      
+                      {showComment && currentVote.worst_action_comment && (
+                        <div className="bg-slate-700/50 rounded-lg p-4 border border-white/10">
+                          <p className="text-white italic">&ldquo;{currentVote.worst_action_comment}&rdquo;</p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-gray-400 italic">Aucun vote pour le plus beau fail</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Navigation */}
+          <button
+            onClick={handleNextVote}
+            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+          >
+            {currentVoteIndex < votes.length - 1 ? (
+              <>
+                Vote suivant
+                <ArrowRight size={20} />
+              </>
+            ) : (
+              <>
+                {readingPhase === 'predictions' ? 'Passer aux votes TOP' :
+                 readingPhase === 'top' ? 'Passer aux votes FLOP' :
+                 readingPhase === 'flop' && session.include_best_action ? 'Passer aux plus beaux gestes' :
+                 readingPhase === 'flop' && session.include_worst_action ? 'Passer aux plus beaux fails' :
+                 readingPhase === 'best_action' ? 'Passer aux plus beaux fails' :
+                 'Terminer la lecture'}
+                <ArrowRight size={20} />
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   )

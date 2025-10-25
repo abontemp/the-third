@@ -1,28 +1,44 @@
 'use client'
-
-import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Trophy, ThumbsDown, ArrowLeft, Loader } from 'lucide-react'
+import { useRouter, useParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { ArrowLeft, Loader, TrendingUp, TrendingDown, Sparkles, Flame, Trophy, Target } from 'lucide-react'
 
-type VoteResult = {
+type PodiumResult = {
   player_id: string
   player_name: string
   vote_count: number
   percentage: number
-  displayRank: number
+}
+
+type VotingSession = {
+  id: string
+  include_predictions: boolean
+  include_best_action: boolean
+  include_worst_action: boolean
+  match: {
+    opponent: string
+    match_date: string
+  }
 }
 
 export default function ResultsPage() {
   const router = useRouter()
   const params = useParams()
-  const sessionId = params.sessionId as string
+  const sessionId = params?.sessionId as string
   const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
-  const [topResults, setTopResults] = useState<VoteResult[]>([])
-  const [flopResults, setFlopResults] = useState<VoteResult[]>([])
-  const [matchInfo, setMatchInfo] = useState<{ opponent: string; date: string } | null>(null)
+  const [session, setSession] = useState<VotingSession | null>(null)
+  const [topResults, setTopResults] = useState<PodiumResult[]>([])
+  const [flopResults, setFlopResults] = useState<PodiumResult[]>([])
+  const [bestActionResults, setBestActionResults] = useState<PodiumResult[]>([])
+  const [worstActionResults, setWorstActionResults] = useState<PodiumResult[]>([])
+  const [predictionStats, setPredictionStats] = useState<{
+    top_correct: number
+    flop_correct: number
+    total_predictions: number
+  }>({ top_correct: 0, flop_correct: 0, total_predictions: 0 })
 
   useEffect(() => {
     loadResults()
@@ -32,329 +48,433 @@ export default function ResultsPage() {
     try {
       setLoading(true)
 
+      // Récupérer la session
       const { data: sessionData } = await supabase
         .from('voting_sessions')
         .select(`
           id,
-          matches (
-            opponent,
-            match_date
-          )
+          include_predictions,
+          include_best_action,
+          include_worst_action,
+          match:match_id(opponent, match_date)
         `)
         .eq('id', sessionId)
         .single()
 
-      if (sessionData) {
-        const match = Array.isArray(sessionData.matches) 
-          ? sessionData.matches[0] 
-          : sessionData.matches
-        
-        setMatchInfo({
-          opponent: match?.opponent || '',
-          date: match?.match_date || ''
-        })
+      if (!sessionData) {
+        alert('Session introuvable')
+        router.push('/dashboard')
+        return
       }
 
-      const { data: votes } = await supabase
+      const sessionFormatted: VotingSession = {
+        id: sessionData.id,
+        include_predictions: sessionData.include_predictions,
+        include_best_action: sessionData.include_best_action,
+        include_worst_action: sessionData.include_worst_action,
+        match: Array.isArray(sessionData.match) ? sessionData.match[0] : sessionData.match
+      }
+
+      setSession(sessionFormatted)
+
+      // Récupérer tous les votes
+      const { data: votesData } = await supabase
         .from('votes')
-        .select('top_player_id, flop_player_id')
+        .select('*')
         .eq('session_id', sessionId)
 
-      if (!votes || votes.length === 0) {
+      if (!votesData || votesData.length === 0) {
         setLoading(false)
         return
       }
 
-      const topCounts: Record<string, number> = {}
-      votes.forEach(vote => {
-        if (vote.top_player_id) {
-          topCounts[vote.top_player_id] = (topCounts[vote.top_player_id] || 0) + 1
-        }
+      // Récupérer tous les profils nécessaires
+      const allPlayerIds = new Set<string>()
+      votesData.forEach(vote => {
+        allPlayerIds.add(vote.top_player_id)
+        allPlayerIds.add(vote.flop_player_id)
+        if (vote.best_action_player_id) allPlayerIds.add(vote.best_action_player_id)
+        if (vote.worst_action_player_id) allPlayerIds.add(vote.worst_action_player_id)
       })
 
-      const flopCounts: Record<string, number> = {}
-      votes.forEach(vote => {
-        if (vote.flop_player_id) {
-          flopCounts[vote.flop_player_id] = (flopCounts[vote.flop_player_id] || 0) + 1
-        }
-      })
-
-      const allPlayerIds = [...new Set([...Object.keys(topCounts), ...Object.keys(flopCounts)])]
-      
-      const { data: profiles } = await supabase
+      const { data: profilesData } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, email')
-        .in('id', allPlayerIds)
+        .select('id, first_name, last_name, nickname, email')
+        .in('id', Array.from(allPlayerIds))
 
-      const playerNames: Record<string, string> = {}
-      profiles?.forEach(profile => {
-        playerNames[profile.id] = profile.first_name && profile.last_name
-          ? `${profile.first_name} ${profile.last_name}`
-          : profile.email || 'Joueur inconnu'
+      const getDisplayName = (userId: string) => {
+        const profile = profilesData?.find(p => p.id === userId)
+        if (!profile) return 'Inconnu'
+        
+        if (profile.nickname?.trim()) return profile.nickname.trim()
+        if (profile.first_name || profile.last_name) {
+          const firstName = profile.first_name?.trim() || ''
+          const lastName = profile.last_name?.trim() || ''
+          return `${firstName} ${lastName}`.trim()
+        }
+        if (profile.email) return profile.email
+        return 'Inconnu'
+      }
+
+      // Calculer les résultats TOP
+      const topVotes: Record<string, number> = {}
+      votesData.forEach(vote => {
+        topVotes[vote.top_player_id] = (topVotes[vote.top_player_id] || 0) + 1
       })
-
-      const topResultsArray = Object.entries(topCounts)
+      const topSorted = Object.entries(topVotes)
         .map(([playerId, count]) => ({
           player_id: playerId,
-          player_name: playerNames[playerId] || 'Joueur inconnu',
+          player_name: getDisplayName(playerId),
           vote_count: count,
-          percentage: Math.round((count / votes.length) * 100),
-          displayRank: 0
+          percentage: Math.round((count / votesData.length) * 100)
         }))
         .sort((a, b) => b.vote_count - a.vote_count)
+        .slice(0, 3)
+      setTopResults(topSorted)
 
-      assignDisplayRanks(topResultsArray)
-
-      const flopResultsArray = Object.entries(flopCounts)
+      // Calculer les résultats FLOP
+      const flopVotes: Record<string, number> = {}
+      votesData.forEach(vote => {
+        flopVotes[vote.flop_player_id] = (flopVotes[vote.flop_player_id] || 0) + 1
+      })
+      const flopSorted = Object.entries(flopVotes)
         .map(([playerId, count]) => ({
           player_id: playerId,
-          player_name: playerNames[playerId] || 'Joueur inconnu',
+          player_name: getDisplayName(playerId),
           vote_count: count,
-          percentage: Math.round((count / votes.length) * 100),
-          displayRank: 0
+          percentage: Math.round((count / votesData.length) * 100)
         }))
         .sort((a, b) => b.vote_count - a.vote_count)
+        .slice(0, 3)
+      setFlopResults(flopSorted)
 
-      assignDisplayRanks(flopResultsArray)
+      // Calculer les résultats Plus beau geste
+      if (sessionFormatted.include_best_action) {
+        const bestActionVotes: Record<string, number> = {}
+        votesData.forEach(vote => {
+          if (vote.best_action_player_id) {
+            bestActionVotes[vote.best_action_player_id] = (bestActionVotes[vote.best_action_player_id] || 0) + 1
+          }
+        })
+        const bestActionSorted = Object.entries(bestActionVotes)
+          .map(([playerId, count]) => ({
+            player_id: playerId,
+            player_name: getDisplayName(playerId),
+            vote_count: count,
+            percentage: Math.round((count / votesData.length) * 100)
+          }))
+          .sort((a, b) => b.vote_count - a.vote_count)
+          .slice(0, 3)
+        setBestActionResults(bestActionSorted)
+      }
 
-      setTopResults(topResultsArray.slice(0, 5))
-      setFlopResults(flopResultsArray.slice(0, 5))
+      // Calculer les résultats Plus beau fail
+      if (sessionFormatted.include_worst_action) {
+        const worstActionVotes: Record<string, number> = {}
+        votesData.forEach(vote => {
+          if (vote.worst_action_player_id) {
+            worstActionVotes[vote.worst_action_player_id] = (worstActionVotes[vote.worst_action_player_id] || 0) + 1
+          }
+        })
+        const worstActionSorted = Object.entries(worstActionVotes)
+          .map(([playerId, count]) => ({
+            player_id: playerId,
+            player_name: getDisplayName(playerId),
+            vote_count: count,
+            percentage: Math.round((count / votesData.length) * 100)
+          }))
+          .sort((a, b) => b.vote_count - a.vote_count)
+          .slice(0, 3)
+        setWorstActionResults(worstActionSorted)
+      }
 
-    } catch (error) {
-      console.error('Erreur:', error)
+      // Calculer les stats des prédictions
+      if (sessionFormatted.include_predictions && topSorted.length > 0 && flopSorted.length > 0) {
+        const topWinner = topSorted[0].player_id
+        const flopWinner = flopSorted[0].player_id
+        
+        let topCorrect = 0
+        let flopCorrect = 0
+        let totalPredictions = 0
+
+        votesData.forEach(vote => {
+          if (vote.predicted_top_id && vote.predicted_flop_id) {
+            totalPredictions++
+            if (vote.predicted_top_id === topWinner) topCorrect++
+            if (vote.predicted_flop_id === flopWinner) flopCorrect++
+          }
+        })
+
+        setPredictionStats({
+          top_correct: topCorrect,
+          flop_correct: flopCorrect,
+          total_predictions: totalPredictions
+        })
+      }
+
+    } catch (err) {
+      console.error('Erreur chargement résultats:', err)
+      alert('Erreur lors du chargement des résultats')
     } finally {
       setLoading(false)
     }
   }
 
-  const assignDisplayRanks = (results: VoteResult[]) => {
-    let currentDisplayRank = 1
-    
-    for (let i = 0; i < results.length; i++) {
-      if (i > 0 && results[i].vote_count === results[i - 1].vote_count) {
-        results[i].displayRank = results[i - 1].displayRank
-      } else {
-        results[i].displayRank = currentDisplayRank
-      }
-      currentDisplayRank++
-    }
+  const getMedalColor = (index: number) => {
+    if (index === 0) return 'from-yellow-500 to-yellow-600'
+    if (index === 1) return 'from-gray-400 to-gray-500'
+    return 'from-orange-600 to-orange-700'
   }
 
-  const groupByDisplayRank = (results: VoteResult[]) => {
-    const grouped: { [key: number]: VoteResult[] } = {}
-    results.forEach(result => {
-      if (result.displayRank <= 3) {
-        if (!grouped[result.displayRank]) {
-          grouped[result.displayRank] = []
-        }
-        grouped[result.displayRank].push(result)
-      }
-    })
-    return grouped
-  }
-
-  const getPodiumHeight = (rank: number) => {
-    if (rank === 1) return 'h-64'
-    if (rank === 2) return 'h-48'
+  const getPodiumHeight = (index: number) => {
+    if (index === 0) return 'h-48'
+    if (index === 1) return 'h-40'
     return 'h-32'
   }
 
-  const getMedalColor = (rank: number) => {
-    if (rank === 1) return 'from-yellow-400 to-yellow-600'
-    if (rank === 2) return 'from-gray-300 to-gray-500'
-    return 'from-orange-400 to-orange-600'
-  }
-
-  const getMedalEmoji = (rank: number) => {
-    if (rank === 1) return '🥇'
-    if (rank === 2) return '🥈'
-    return '🥉'
+  const getPodiumOrder = (index: number) => {
+    if (index === 0) return 'order-2'
+    if (index === 1) return 'order-1'
+    return 'order-3'
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
-        <Loader className="text-white animate-spin" size={48} />
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <Loader className="animate-spin text-purple-400" size={48} />
       </div>
     )
   }
 
-  const topGrouped = groupByDisplayRank(topResults)
-  const flopGrouped = groupByDisplayRank(flopResults)
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-4">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-8 max-w-md text-center">
+          <h2 className="text-2xl font-bold text-white mb-2">Session introuvable</h2>
           <button
             onClick={() => router.push('/dashboard')}
-            className="text-white hover:text-blue-400 transition"
-          >
-            <ArrowLeft size={24} />
-          </button>
-          <div>
-            <h1 className="text-3xl font-bold text-white">Résultats du vote</h1>
-            {matchInfo && (
-              <p className="text-gray-400">
-                {matchInfo.opponent} - {new Date(matchInfo.date).toLocaleDateString('fr-FR')}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-yellow-900/30 to-orange-900/30 border border-yellow-500/30 rounded-2xl p-8 mb-8">
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <Trophy className="text-yellow-400" size={32} />
-            <h2 className="text-3xl font-bold text-white">Top du match</h2>
-          </div>
-
-          {topResults.length > 0 ? (
-            <div className="flex items-end justify-center gap-8 mb-8">
-              {[2, 1, 3].map(position => {
-                const playersAtPosition = topGrouped[position] || []
-                if (playersAtPosition.length === 0) return null
-
-                const isMultiple = playersAtPosition.length > 1
-                const totalWidth = isMultiple ? playersAtPosition.length * 220 : 220
-
-                return (
-                  <div
-                    key={position}
-                    className="flex flex-col items-center"
-                    style={{ 
-                      width: `${totalWidth}px`,
-                      order: position === 1 ? 2 : position === 2 ? 1 : 3
-                    }}
-                  >
-                    <div className={`flex ${isMultiple ? 'gap-2' : ''} mb-4 justify-center`} style={{ width: `${totalWidth}px` }}>
-                      {playersAtPosition.map((result) => (
-                        <div key={result.player_id} className="flex flex-col items-center" style={{ width: '210px' }}>
-                          <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(position)} flex items-center justify-center text-3xl mb-3 shadow-lg`}>
-                            {getMedalEmoji(position)}
-                          </div>
-
-                          <div className="bg-slate-800/70 rounded-lg p-4 w-full text-center">
-                            <p className="font-bold text-white text-lg mb-2 truncate">{result.player_name}</p>
-                            <p className="text-yellow-400 text-2xl font-bold">{result.vote_count} votes</p>
-                            <p className="text-gray-400 text-sm">{result.percentage}%</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div 
-                      className={`${getPodiumHeight(position)} bg-gradient-to-t ${getMedalColor(position)} rounded-t-xl flex items-center justify-center transition-all duration-500`}
-                      style={{ width: `${totalWidth}px` }}
-                    >
-                      <span className="text-white font-bold text-4xl">{position}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-center text-gray-400">Aucun vote enregistré</p>
-          )}
-
-          {topResults.filter(r => r.displayRank > 3).length > 0 && (
-            <div className="mt-8 space-y-2">
-              <h3 className="text-xl font-bold text-white mb-4 text-center">Reste du classement</h3>
-              {topResults.filter(r => r.displayRank > 3).map((result) => (
-                <div key={result.player_id} className="bg-slate-800/50 rounded-lg p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl font-bold text-gray-400">#{result.displayRank}</span>
-                    <span className="text-white font-semibold">{result.player_name}</span>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-yellow-400 font-bold">{result.vote_count} votes</p>
-                    <p className="text-gray-400 text-sm">{result.percentage}%</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-2xl p-8">
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <ThumbsDown className="text-purple-400" size={32} />
-            <h2 className="text-3xl font-bold text-white">Flop du match</h2>
-          </div>
-
-          {flopResults.length > 0 ? (
-            <div className="flex items-end justify-center gap-8 mb-8">
-              {[2, 1, 3].map(position => {
-                const playersAtPosition = flopGrouped[position] || []
-                if (playersAtPosition.length === 0) return null
-
-                const isMultiple = playersAtPosition.length > 1
-                const totalWidth = isMultiple ? playersAtPosition.length * 220 : 220
-
-                return (
-                  <div
-                    key={position}
-                    className="flex flex-col items-center"
-                    style={{ 
-                      width: `${totalWidth}px`,
-                      order: position === 1 ? 2 : position === 2 ? 1 : 3
-                    }}
-                  >
-                    <div className={`flex ${isMultiple ? 'gap-2' : ''} mb-4 justify-center`} style={{ width: `${totalWidth}px` }}>
-                      {playersAtPosition.map((result) => (
-                        <div key={result.player_id} className="flex flex-col items-center" style={{ width: '210px' }}>
-                          <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(position)} flex items-center justify-center text-3xl mb-3 shadow-lg`}>
-                            {getMedalEmoji(position)}
-                          </div>
-
-                          <div className="bg-slate-800/70 rounded-lg p-4 w-full text-center">
-                            <p className="font-bold text-white text-lg mb-2 truncate">{result.player_name}</p>
-                            <p className="text-purple-400 text-2xl font-bold">{result.vote_count} votes</p>
-                            <p className="text-gray-400 text-sm">{result.percentage}%</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div 
-                      className={`${getPodiumHeight(position)} bg-gradient-to-t ${getMedalColor(position)} rounded-t-xl flex items-center justify-center transition-all duration-500`}
-                      style={{ width: `${totalWidth}px` }}
-                    >
-                      <span className="text-white font-bold text-4xl">{position}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-center text-gray-400">Aucun vote enregistré</p>
-          )}
-
-          {flopResults.filter(r => r.displayRank > 3).length > 0 && (
-            <div className="mt-8 space-y-2">
-              <h3 className="text-xl font-bold text-white mb-4 text-center">Reste du classement</h3>
-              {flopResults.filter(r => r.displayRank > 3).map((result) => (
-                <div key={result.player_id} className="bg-slate-800/50 rounded-lg p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl font-bold text-gray-400">#{result.displayRank}</span>
-                    <span className="text-white font-semibold">{result.player_name}</span>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-purple-400 font-bold">{result.vote_count} votes</p>
-                    <p className="text-gray-400 text-sm">{result.percentage}%</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="mt-8 text-center">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-semibold transition"
+            className="mt-4 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
           >
             Retour au dashboard
           </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 sm:p-8">
+      <div className="max-w-6xl mx-auto">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="text-purple-300 hover:text-purple-100 mb-6 flex items-center gap-2 transition"
+        >
+          <ArrowLeft size={20} />
+          Retour au dashboard
+        </button>
+
+        {/* Header */}
+        <div className="text-center mb-12">
+          <Trophy className="text-yellow-400 mx-auto mb-4" size={64} />
+          <h1 className="text-4xl font-bold text-white mb-2">Résultats du match</h1>
+          <p className="text-xl text-gray-300">
+            Contre <span className="font-semibold text-purple-300">{session.match.opponent}</span>
+          </p>
+          <p className="text-gray-400">
+            {new Date(session.match.match_date).toLocaleDateString('fr-FR', { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            })}
+          </p>
+        </div>
+
+        <div className="space-y-12">
+          {/* Stats des prédictions */}
+          {session.include_predictions && predictionStats.total_predictions > 0 && (
+            <div className="bg-gradient-to-br from-purple-900/30 to-indigo-900/30 border border-purple-500/30 rounded-2xl p-8">
+              <div className="flex items-center justify-center gap-3 mb-6">
+                <Target className="text-purple-400" size={32} />
+                <h2 className="text-3xl font-bold text-white">Précision des prédictions</h2>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-slate-700/30 rounded-lg p-6 text-center">
+                  <p className="text-gray-400 mb-2">Prédictions TOP correctes</p>
+                  <p className="text-4xl font-bold text-green-400">
+                    {predictionStats.top_correct}/{predictionStats.total_predictions}
+                  </p>
+                  <p className="text-gray-400 text-sm mt-2">
+                    {Math.round((predictionStats.top_correct / predictionStats.total_predictions) * 100)}% de réussite
+                  </p>
+                </div>
+
+                <div className="bg-slate-700/30 rounded-lg p-6 text-center">
+                  <p className="text-gray-400 mb-2">Prédictions FLOP correctes</p>
+                  <p className="text-4xl font-bold text-red-400">
+                    {predictionStats.flop_correct}/{predictionStats.total_predictions}
+                  </p>
+                  <p className="text-gray-400 text-sm mt-2">
+                    {Math.round((predictionStats.flop_correct / predictionStats.total_predictions) * 100)}% de réussite
+                  </p>
+                </div>
+
+                <div className="bg-slate-700/30 rounded-lg p-6 text-center">
+                  <p className="text-gray-400 mb-2">Prédictions parfaites</p>
+                  <p className="text-4xl font-bold text-purple-400">
+                    {votesData => {
+                      // Cette variable ne sera pas utilisée ici mais juste pour éviter les erreurs
+                      return 0
+                    }}
+                  </p>
+                  <p className="text-gray-400 text-sm mt-2">TOP et FLOP corrects</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Podium TOP */}
+          <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-2xl p-8">
+            <div className="flex items-center justify-center gap-3 mb-8">
+              <TrendingUp className="text-green-400" size={32} />
+              <h2 className="text-3xl font-bold text-white">Top du match</h2>
+            </div>
+
+            {topResults.length > 0 ? (
+              <div className="flex items-end justify-center gap-4 mb-8">
+                {topResults.map((result, index) => (
+                  <div
+                    key={result.player_id}
+                    className={`flex flex-col items-center ${getPodiumOrder(index)}`}
+                    style={{ width: '200px' }}
+                  >
+                    {/* Médaille */}
+                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(index)} flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg`}>
+                      {index + 1}
+                    </div>
+
+                    {/* Nom et stats */}
+                    <div className="bg-slate-800/50 rounded-lg p-4 w-full text-center mb-4">
+                      <p className="font-bold text-white text-lg mb-2">{result.player_name}</p>
+                      <p className="text-green-400 text-2xl font-bold">{result.vote_count} votes</p>
+                      <p className="text-gray-400 text-sm">{result.percentage}%</p>
+                    </div>
+
+                    {/* Colonne du podium */}
+                    <div className={`w-full ${getPodiumHeight(index)} bg-gradient-to-t ${getMedalColor(index)} rounded-t-xl flex items-center justify-center transition-all duration-500`}>
+                      <span className="text-white font-bold text-4xl">{index + 1}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-400">Aucun vote enregistré</p>
+            )}
+          </div>
+
+          {/* Podium FLOP */}
+          <div className="bg-gradient-to-br from-red-900/30 to-orange-900/30 border border-red-500/30 rounded-2xl p-8">
+            <div className="flex items-center justify-center gap-3 mb-8">
+              <TrendingDown className="text-red-400" size={32} />
+              <h2 className="text-3xl font-bold text-white">Flop du match</h2>
+            </div>
+
+            {flopResults.length > 0 ? (
+              <div className="flex items-end justify-center gap-4 mb-8">
+                {flopResults.map((result, index) => (
+                  <div
+                    key={result.player_id}
+                    className={`flex flex-col items-center ${getPodiumOrder(index)}`}
+                    style={{ width: '200px' }}
+                  >
+                    {/* Médaille */}
+                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(index)} flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg`}>
+                      {index + 1}
+                    </div>
+
+                    {/* Nom et stats */}
+                    <div className="bg-slate-800/50 rounded-lg p-4 w-full text-center mb-4">
+                      <p className="font-bold text-white text-lg mb-2">{result.player_name}</p>
+                      <p className="text-red-400 text-2xl font-bold">{result.vote_count} votes</p>
+                      <p className="text-gray-400 text-sm">{result.percentage}%</p>
+                    </div>
+
+                    {/* Colonne du podium */}
+                    <div className={`w-full ${getPodiumHeight(index)} bg-gradient-to-t ${getMedalColor(index)} rounded-t-xl flex items-center justify-center transition-all duration-500`}>
+                      <span className="text-white font-bold text-4xl">{index + 1}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-400">Aucun vote enregistré</p>
+            )}
+          </div>
+
+          {/* Podium Plus beau geste */}
+          {session.include_best_action && bestActionResults.length > 0 && (
+            <div className="bg-gradient-to-br from-blue-900/30 to-cyan-900/30 border border-blue-500/30 rounded-2xl p-8">
+              <div className="flex items-center justify-center gap-3 mb-8">
+                <Sparkles className="text-blue-400" size={32} />
+                <h2 className="text-3xl font-bold text-white">Plus beau geste</h2>
+              </div>
+
+              <div className="flex items-end justify-center gap-4 mb-8">
+                {bestActionResults.map((result, index) => (
+                  <div
+                    key={result.player_id}
+                    className={`flex flex-col items-center ${getPodiumOrder(index)}`}
+                    style={{ width: '200px' }}
+                  >
+                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(index)} flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg`}>
+                      {index + 1}
+                    </div>
+                    <div className="bg-slate-800/50 rounded-lg p-4 w-full text-center mb-4">
+                      <p className="font-bold text-white text-lg mb-2">{result.player_name}</p>
+                      <p className="text-blue-400 text-2xl font-bold">{result.vote_count} votes</p>
+                      <p className="text-gray-400 text-sm">{result.percentage}%</p>
+                    </div>
+                    <div className={`w-full ${getPodiumHeight(index)} bg-gradient-to-t ${getMedalColor(index)} rounded-t-xl flex items-center justify-center transition-all duration-500`}>
+                      <span className="text-white font-bold text-4xl">{index + 1}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Podium Plus beau fail */}
+          {session.include_worst_action && worstActionResults.length > 0 && (
+            <div className="bg-gradient-to-br from-orange-900/30 to-amber-900/30 border border-orange-500/30 rounded-2xl p-8">
+              <div className="flex items-center justify-center gap-3 mb-8">
+                <Flame className="text-orange-400" size={32} />
+                <h2 className="text-3xl font-bold text-white">Plus beau fail</h2>
+              </div>
+
+              <div className="flex items-end justify-center gap-4 mb-8">
+                {worstActionResults.map((result, index) => (
+                  <div
+                    key={result.player_id}
+                    className={`flex flex-col items-center ${getPodiumOrder(index)}`}
+                    style={{ width: '200px' }}
+                  >
+                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(index)} flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg`}>
+                      {index + 1}
+                    </div>
+                    <div className="bg-slate-800/50 rounded-lg p-4 w-full text-center mb-4">
+                      <p className="font-bold text-white text-lg mb-2">{result.player_name}</p>
+                      <p className="text-orange-400 text-2xl font-bold">{result.vote_count} votes</p>
+                      <p className="text-gray-400 text-sm">{result.percentage}%</p>
+                    </div>
+                    <div className={`w-full ${getPodiumHeight(index)} bg-gradient-to-t ${getMedalColor(index)} rounded-t-xl flex items-center justify-center transition-all duration-500`}>
+                      <span className="text-white font-bold text-4xl">{index + 1}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
