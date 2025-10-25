@@ -649,6 +649,119 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* SECTION VOTES */}
+        {votingSessions.length > 0 && (
+          <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-6 mb-6">
+            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+              <Vote className="text-purple-400" size={24} />
+              Sessions de vote
+            </h2>
+            
+            <div className="space-y-4">
+              {votingSessions.map((session) => (
+                <div 
+                  key={session.id}
+                  className="bg-slate-800/50 border border-white/10 rounded-lg p-4"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+                        {session.match.opponent}
+                        {session.status === 'reading' && 
+                         (session.flop_reader_id === user?.id || session.top_reader_id === user?.id) && (
+                          <span className="px-3 py-1 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded-full animate-pulse">
+                            🎤 Vous êtes lecteur !
+                          </span>
+                        )}
+                      </h3>
+                      <div className="flex items-center gap-2 text-sm text-gray-400">
+                        <Calendar size={16} />
+                        {new Date(session.match.match_date).toLocaleDateString('fr-FR', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {session.status === 'open' && session.is_participant && (
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          session.has_voted 
+                            ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                            : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                        }`}>
+                          {session.has_voted ? '✓ Voté' : '⏳ En attente'}
+                        </span>
+                      )}
+                      
+                      {session.status === 'reading' && (
+                        <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs font-semibold border border-blue-500/30">
+                          📖 Lecture en cours
+                        </span>
+                      )}
+                      
+                      {session.status === 'completed' && (
+                        <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-semibold border border-green-500/30">
+                          ✅ Terminé
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    {/* Vote ouvert */}
+                    {session.status === 'open' && session.is_participant && !session.has_voted && (
+                      <button
+                        onClick={() => router.push(`/vote/${session.id}`)}
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
+                      >
+                        <Vote size={18} />
+                        Voter maintenant
+                      </button>
+                    )}
+
+                    {/* Lecture en cours - bouton pour le lecteur */}
+                    {session.status === 'reading' && 
+                     (session.flop_reader_id === user?.id || session.top_reader_id === user?.id) && (
+                      <button
+                        onClick={() => router.push(`/vote/${session.id}/reading`)}
+                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 animate-pulse"
+                      >
+                        <Vote size={18} />
+                        🎤 Commencer la lecture
+                      </button>
+                    )}
+
+                    {/* Vote terminé - voir résultats */}
+                    {session.status === 'completed' && (
+                      <button
+                        onClick={() => router.push(`/vote/${session.id}/results`)}
+                        className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
+                      >
+                        <Award size={18} />
+                        Voir les résultats
+                      </button>
+                    )}
+
+                    {/* Bouton de gestion pour les managers */}
+                    {isManager && session.status === 'open' && (
+                      <button
+                        onClick={() => router.push(`/vote/${session.id}/manage`)}
+                        className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
+                      >
+                        <Users size={18} />
+                        Gérer
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {isManager && (
           <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-6 mb-6">
             <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
