@@ -30,6 +30,7 @@ export default function ResultsPage() {
 
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState<VotingSession | null>(null)
+  const [allVotes, setAllVotes] = useState<any[]>([])
   const [topResults, setTopResults] = useState<PodiumResult[]>([])
   const [flopResults, setFlopResults] = useState<PodiumResult[]>([])
   const [bestActionResults, setBestActionResults] = useState<PodiumResult[]>([])
@@ -37,8 +38,9 @@ export default function ResultsPage() {
   const [predictionStats, setPredictionStats] = useState<{
     top_correct: number
     flop_correct: number
+    both_correct: number
     total_predictions: number
-  }>({ top_correct: 0, flop_correct: 0, total_predictions: 0 })
+  }>({ top_correct: 0, flop_correct: 0, both_correct: 0, total_predictions: 0 })
 
   useEffect(() => {
     loadResults()
@@ -87,6 +89,8 @@ export default function ResultsPage() {
         setLoading(false)
         return
       }
+
+      setAllVotes(votesData)
 
       // Récupérer tous les profils nécessaires
       const allPlayerIds = new Set<string>()
@@ -195,19 +199,25 @@ export default function ResultsPage() {
         
         let topCorrect = 0
         let flopCorrect = 0
+        let bothCorrect = 0
         let totalPredictions = 0
 
         votesData.forEach(vote => {
           if (vote.predicted_top_id && vote.predicted_flop_id) {
             totalPredictions++
-            if (vote.predicted_top_id === topWinner) topCorrect++
-            if (vote.predicted_flop_id === flopWinner) flopCorrect++
+            const isTopCorrect = vote.predicted_top_id === topWinner
+            const isFlopCorrect = vote.predicted_flop_id === flopWinner
+            
+            if (isTopCorrect) topCorrect++
+            if (isFlopCorrect) flopCorrect++
+            if (isTopCorrect && isFlopCorrect) bothCorrect++
           }
         })
 
         setPredictionStats({
           top_correct: topCorrect,
           flop_correct: flopCorrect,
+          both_correct: bothCorrect,
           total_predictions: totalPredictions
         })
       }
@@ -323,12 +333,11 @@ export default function ResultsPage() {
                 <div className="bg-slate-700/30 rounded-lg p-6 text-center">
                   <p className="text-gray-400 mb-2">Prédictions parfaites</p>
                   <p className="text-4xl font-bold text-purple-400">
-                    {votesData => {
-                      // Cette variable ne sera pas utilisée ici mais juste pour éviter les erreurs
-                      return 0
-                    }}
+                    {predictionStats.both_correct}/{predictionStats.total_predictions}
                   </p>
-                  <p className="text-gray-400 text-sm mt-2">TOP et FLOP corrects</p>
+                  <p className="text-gray-400 text-sm mt-2">
+                    TOP et FLOP corrects
+                  </p>
                 </div>
               </div>
             </div>
