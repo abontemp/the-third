@@ -444,11 +444,11 @@ export default function DashboardPage() {
           <div className="mt-8 bg-gradient-to-br from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-6">
             <h2 className="text-2xl font-bold text-white mb-4">Vous souhaitez rejoindre une autre équipe ?</h2>
             <button 
-              onClick={() => router.push('/onboarding')}
+              onClick={() => router.push('/dashboard/join-team')}
               className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
             >
               <Plus size={20} />
-              Rejoindre une équipe
+              Demander à rejoindre une autre équipe
             </button>
           </div>
         </div>
@@ -683,11 +683,11 @@ export default function DashboardPage() {
           <h2 className="text-2xl font-bold text-white mb-4">Gestion d&apos;équipe</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <button 
-              onClick={() => router.push('/onboarding')}
+              onClick={() => router.push('/dashboard/join-team')}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
             >
               <Plus size={20} />
-              Rejoindre une équipe
+              Demander à rejoindre une autre équipe
             </button>
             {teams.length > 1 && (
               <button 
