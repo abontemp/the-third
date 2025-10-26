@@ -1,10 +1,10 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader, Quote, Trophy, ThumbsDown, Star } from 'lucide-react'
+import { ArrowLeft, Loader, Quote, TrendingUp, TrendingDown } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 
-type QuoteType = {
+type SavedQuote = {
   id: string
   comment: string
   vote_type: 'top' | 'flop'
@@ -16,43 +16,50 @@ type QuoteType = {
   season_name?: string
 }
 
-export default function MemorableQuotesPage() {
+export default function QuotesPage() {
   const router = useRouter()
   const supabase = createClient()
   
   const [loading, setLoading] = useState(true)
-  const [quotes, setQuotes] = useState<QuoteType[]>([])
+  const [quotes, setQuotes] = useState<SavedQuote[]>([])
   const [filter, setFilter] = useState<'all' | 'top' | 'flop'>('all')
 
   useEffect(() => {
     loadQuotes()
-  }, [filter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadQuotes = async () => {
     try {
+      console.log('🔍 Chargement des citations...')
       setLoading(true)
       
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      
+      if (userError || !user) {
+        console.error('❌ Erreur auth:', userError)
         router.push('/login')
         return
       }
 
-      // Récupérer l'équipe de l'utilisateur
-      const { data: membership } = await supabase
+      console.log('✅ Utilisateur trouvé:', user.id)
+
+      const { data: membership, error: membershipError } = await supabase
         .from('team_members')
         .select('team_id')
         .eq('user_id', user.id)
         .single()
 
-      if (!membership) {
-        router.push('/dashboard')
+      if (membershipError || !membership) {
+        console.error('⚠️ Erreur membership:', membershipError)
+        setLoading(false)
         return
       }
 
-      // Récupérer toutes les citations de l'équipe
-      const { data: quotesData } = await supabase
-        .from('memorable_quotes')
+      console.log('✅ Équipe trouvée:', membership.team_id)
+
+      // Récupérer les citations sauvegardées
+      const { data: quotesData, error: quotesError } = await supabase
+        .from('saved_quotes')
         .select(`
           id,
           comment,
@@ -61,9 +68,7 @@ export default function MemorableQuotesPage() {
           player_id,
           saved_at,
           votes (
-            session_id,
             voting_sessions (
-              match_id,
               matches (
                 opponent,
                 match_date,
@@ -74,19 +79,28 @@ export default function MemorableQuotesPage() {
             )
           )
         `)
-        .eq('votes.voting_sessions.matches.seasons.team_id', membership.team_id)
+        .eq('team_id', membership.team_id)
         .order('saved_at', { ascending: false })
 
-      if (!quotesData) {
-        setQuotes([])
+      if (quotesError) {
+        console.error('⚠️ Erreur quotes:', quotesError)
+        setLoading(false)
         return
       }
 
-      // Récupérer les profils des votants et joueurs
+      console.log('✅ Citations récupérées:', quotesData?.length || 0)
+
+      if (!quotesData || quotesData.length === 0) {
+        setQuotes([])
+        setLoading(false)
+        return
+      }
+
+      // Récupérer les profils pour les noms
       const userIds = new Set<string>()
       quotesData.forEach(q => {
-        if (q.voter_id) userIds.add(q.voter_id)
-        if (q.player_id) userIds.add(q.player_id)
+        userIds.add(q.voter_id)
+        userIds.add(q.player_id)
       })
 
       const { data: profilesData } = await supabase
@@ -97,7 +111,9 @@ export default function MemorableQuotesPage() {
       const profilesMap: Record<string, string> = {}
       profilesData?.forEach(p => {
         profilesMap[p.id] = p.nickname || 
-                           (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8))
+                           (p.first_name && p.last_name 
+                             ? `${p.first_name} ${p.last_name}` 
+                             : 'Joueur')
       })
 
       // Formater les citations
@@ -108,18 +124,18 @@ export default function MemorableQuotesPage() {
         })
         .map(q => {
           const voteData = Array.isArray(q.votes) ? q.votes[0] : q.votes
-          const sessionData = voteData?.voting_sessions as { matches?: unknown } | undefined
+          const sessionData = voteData?.voting_sessions
           const matchData = Array.isArray(sessionData?.matches) 
-            ? (sessionData.matches as { opponent?: string; match_date?: string; seasons?: unknown }[])[0] 
-            : (sessionData?.matches as { opponent?: string; match_date?: string; seasons?: unknown } | undefined)
+            ? sessionData.matches[0] 
+            : sessionData?.matches
           const seasonData = Array.isArray(matchData?.seasons)
-            ? (matchData.seasons as { name?: string }[])[0]
-            : (matchData?.seasons as { name?: string } | undefined)
+            ? matchData.seasons[0]
+            : matchData?.seasons
 
           return {
             id: q.id,
             comment: q.comment,
-            vote_type: q.vote_type,
+            vote_type: q.vote_type as 'top' | 'flop',
             voter_name: profilesMap[q.voter_id] || 'Inconnu',
             player_name: profilesMap[q.player_id] || 'Inconnu',
             match_opponent: matchData?.opponent || 'Match inconnu',
@@ -132,19 +148,28 @@ export default function MemorableQuotesPage() {
       setQuotes(formattedQuotes)
 
     } catch (err) {
-      console.error('Erreur:', err)
+      console.error('❌ Erreur générale:', err)
     } finally {
       setLoading(false)
+      console.log('✅ Chargement terminé')
     }
   }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
-        <Loader className="text-white animate-spin" size={48} />
+        <div className="text-center">
+          <Loader className="text-white animate-spin mx-auto mb-4" size={48} />
+          <p className="text-gray-400">Chargement des citations...</p>
+        </div>
       </div>
     )
   }
+
+  const filteredQuotes = quotes.filter(q => {
+    if (filter === 'all') return true
+    return q.vote_type === filter
+  })
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -184,82 +209,80 @@ export default function MemorableQuotesPage() {
             onClick={() => setFilter('top')}
             className={`px-6 py-3 rounded-lg font-semibold transition flex items-center gap-2 ${
               filter === 'top'
-                ? 'bg-yellow-600 text-white'
+                ? 'bg-green-600 text-white'
                 : 'bg-slate-800/50 text-gray-400 hover:text-white'
             }`}
           >
-            <Trophy size={18} />
-            Citations TOP
+            <TrendingUp size={20} />
+            TOP ({quotes.filter(q => q.vote_type === 'top').length})
           </button>
           <button
             onClick={() => setFilter('flop')}
             className={`px-6 py-3 rounded-lg font-semibold transition flex items-center gap-2 ${
               filter === 'flop'
-                ? 'bg-purple-600 text-white'
+                ? 'bg-red-600 text-white'
                 : 'bg-slate-800/50 text-gray-400 hover:text-white'
             }`}
           >
-            <ThumbsDown size={18} />
-            Citations FLOP
+            <TrendingDown size={20} />
+            FLOP ({quotes.filter(q => q.vote_type === 'flop').length})
           </button>
         </div>
 
-        {quotes.length === 0 ? (
+        {/* Liste des citations */}
+        {filteredQuotes.length === 0 ? (
           <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-12 text-center">
             <Quote className="mx-auto mb-4 text-gray-600" size={64} />
-            <h2 className="text-2xl font-bold text-white mb-2">Aucune citation enregistrée</h2>
+            <h2 className="text-2xl font-bold text-white mb-2">
+              {filter === 'all' ? 'Aucune citation pour le moment' : `Aucune citation ${filter.toUpperCase()}`}
+            </h2>
             <p className="text-gray-400">
-              Les managers et lecteurs peuvent sauvegarder les meilleures citations pendant la lecture des votes
+              Les managers peuvent sauvegarder des citations mémorables lors de la lecture des votes
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {quotes.map((quote) => (
+          <div className="space-y-4">
+            {filteredQuotes.map((quote) => (
               <div 
                 key={quote.id}
-                className={`bg-slate-800/50 backdrop-blur border rounded-2xl p-6 ${
+                className={`bg-gradient-to-br ${
                   quote.vote_type === 'top' 
-                    ? 'border-yellow-500/30' 
-                    : 'border-purple-500/30'
-                }`}
+                    ? 'from-green-900/30 to-emerald-900/30 border-green-500/30' 
+                    : 'from-red-900/30 to-orange-900/30 border-red-500/30'
+                } border rounded-2xl p-6`}
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-start gap-4">
+                  <div className={`p-3 rounded-full ${
+                    quote.vote_type === 'top' ? 'bg-green-500/20' : 'bg-red-500/20'
+                  }`}>
                     {quote.vote_type === 'top' ? (
-                      <Trophy className="text-yellow-400" size={24} />
+                      <TrendingUp className="text-green-400" size={24} />
                     ) : (
-                      <ThumbsDown className="text-purple-400" size={24} />
+                      <TrendingDown className="text-red-400" size={24} />
                     )}
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                      quote.vote_type === 'top'
-                        ? 'bg-yellow-500/20 text-yellow-300'
-                        : 'bg-purple-500/20 text-purple-300'
-                    }`}>
-                      {quote.vote_type === 'top' ? 'TOP' : 'FLOP'}
-                    </span>
                   </div>
-                  <Star className="text-yellow-400" size={20} />
-                </div>
-
-                <blockquote className="text-white text-lg mb-4 italic">
-                  &ldquo;{quote.comment}&rdquo;
-                </blockquote>
-
-                <div className="text-sm text-gray-400 space-y-1">
-                  <p>
-                    <span className="text-gray-500">De</span>{' '}
-                    <span className="text-white font-semibold">{quote.voter_name}</span>
-                    {' '}<span className="text-gray-500">pour</span>{' '}
-                    <span className="text-white font-semibold">{quote.player_name}</span>
-                  </p>
-                  <p>
-                    <span className="text-gray-500">Match vs</span>{' '}
-                    <span className="text-white">{quote.match_opponent}</span>
-                  </p>
-                  <p className="text-gray-500 text-xs">
-                    {new Date(quote.match_date).toLocaleDateString('fr-FR')}
-                    {quote.season_name && ` • ${quote.season_name}`}
-                  </p>
+                  
+                  <div className="flex-1">
+                    <p className="text-lg text-white mb-3 italic">
+                      &ldquo;{quote.comment}&rdquo;
+                    </p>
+                    
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-400">
+                      <span className="text-white font-semibold">{quote.voter_name}</span>
+                      <span>→</span>
+                      <span className="text-white font-semibold">{quote.player_name}</span>
+                      <span>•</span>
+                      <span>{quote.match_opponent}</span>
+                      <span>•</span>
+                      <span>{new Date(quote.match_date).toLocaleDateString('fr-FR')}</span>
+                      {quote.season_name && (
+                        <>
+                          <span>•</span>
+                          <span>{quote.season_name}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
