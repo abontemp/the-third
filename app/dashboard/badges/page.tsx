@@ -76,41 +76,68 @@ export default function BadgesPage() {
 
   const loadBadges = async () => {
     try {
+      console.log('🔍 Chargement des badges...')
       setLoading(true)
       
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      
+      if (userError) {
+        console.error('❌ Erreur auth:', userError)
+        router.push('/login')
+        return
+      }
+      
       if (!user) {
+        console.log('❌ Pas d\'utilisateur')
         router.push('/login')
         return
       }
 
+      console.log('✅ Utilisateur trouvé:', user.id)
+
       // Récupérer le profil
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('first_name, last_name, nickname')
         .eq('id', user.id)
         .single()
+
+      if (profileError) {
+        console.error('⚠️ Erreur profil:', profileError)
+      }
 
       const displayName = profile?.nickname || 
                          (profile?.first_name && profile?.last_name 
                            ? `${profile.first_name} ${profile.last_name}` 
                            : 'Vous')
       setUserName(displayName)
+      console.log('👤 Nom utilisateur:', displayName)
 
       // Récupérer l'équipe
-      const { data: membership } = await supabase
+      const { data: membership, error: membershipError } = await supabase
         .from('team_members')
         .select('team_id')
         .eq('user_id', user.id)
         .single()
 
-      if (!membership) {
-        router.push('/dashboard')
+      if (membershipError) {
+        console.error('⚠️ Erreur membership:', membershipError)
+        console.log('💡 Pas d\'équipe trouvée, affichage sans badges')
+        // Ne pas rediriger, juste afficher sans badges
+        setLoading(false)
         return
       }
 
+      if (!membership) {
+        console.log('ℹ️ Pas d\'équipe, affichage sans badges')
+        setLoading(false)
+        return
+      }
+
+      console.log('✅ Équipe trouvée:', membership.team_id)
+
       // Récupérer mes badges
-      const { data: badgesData } = await supabase
+      const { data: badgesData, error: badgesError } = await supabase
         .from('player_badges')
         .select(`
           id,
@@ -124,6 +151,15 @@ export default function BadgesPage() {
         .eq('user_id', user.id)
         .eq('team_id', membership.team_id)
         .order('earned_at', { ascending: false })
+
+      if (badgesError) {
+        console.error('⚠️ Erreur badges:', badgesError)
+        console.log('💡 Affichage sans badges')
+        setLoading(false)
+        return
+      }
+
+      console.log('✅ Badges récupérés:', badgesData?.length || 0)
 
       if (badgesData) {
         const formattedBadges = badgesData.map(b => {
@@ -140,16 +176,21 @@ export default function BadgesPage() {
       }
 
     } catch (err) {
-      console.error('Erreur:', err)
+      console.error('❌ Erreur générale:', err)
+      // Ne pas rediriger en cas d'erreur, juste afficher sans badges
     } finally {
       setLoading(false)
+      console.log('✅ Chargement terminé')
     }
   }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
-        <Loader className="text-white animate-spin" size={48} />
+        <div className="text-center">
+          <Loader className="text-white animate-spin mx-auto mb-4" size={48} />
+          <p className="text-gray-400">Chargement des badges...</p>
+        </div>
       </div>
     )
   }
