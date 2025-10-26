@@ -123,12 +123,13 @@ export default function QuotesPage() {
           return q.vote_type === filter
         })
         .map(q => {
-          const voteData = Array.isArray(q.votes) ? q.votes[0] : q.votes
-          const sessionData = voteData?.voting_sessions
-          const matchData = Array.isArray(sessionData?.matches) 
+          // Gérer la structure imbriquée avec any pour éviter les erreurs TypeScript
+          const voteData: any = Array.isArray(q.votes) ? q.votes[0] : q.votes
+          const sessionData: any = voteData?.voting_sessions
+          const matchData: any = Array.isArray(sessionData?.matches) 
             ? sessionData.matches[0] 
             : sessionData?.matches
-          const seasonData = Array.isArray(matchData?.seasons)
+          const seasonData: any = Array.isArray(matchData?.seasons)
             ? matchData.seasons[0]
             : matchData?.seasons
 
