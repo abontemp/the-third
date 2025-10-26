@@ -31,7 +31,9 @@ export default function VotePage() {
   const [submitting, setSubmitting] = useState(false)
   const [session, setSession] = useState<VotingSession | null>(null)
   const [members, setMembers] = useState<Member[]>([])
-  const [currentStep, setCurrentStep] = useState(1)
+  
+  // Système d'étapes basé sur les noms plutôt que des numéros
+  const [currentStepName, setCurrentStepName] = useState<'predictions' | 'main' | 'best_action' | 'worst_action'>('predictions')
 
   // Prédictions
   const [predictedTopId, setPredictedTopId] = useState('')
@@ -160,9 +162,65 @@ export default function VotePage() {
     }
   }
 
+  // Fonction pour obtenir les étapes actives dans l'ordre
+  const getActiveSteps = () => {
+    if (!session) return []
+    
+    const steps: Array<'predictions' | 'main' | 'best_action' | 'worst_action'> = []
+    
+    if (session.include_predictions) steps.push('predictions')
+    steps.push('main') // Toujours présent (TOP/FLOP)
+    if (session.include_best_action) steps.push('best_action')
+    if (session.include_worst_action) steps.push('worst_action')
+    
+    return steps
+  }
+
+  // Fonction pour passer à l'étape suivante
+  const goToNextStep = () => {
+    const activeSteps = getActiveSteps()
+    const currentIndex = activeSteps.indexOf(currentStepName)
+    
+    if (currentIndex < activeSteps.length - 1) {
+      setCurrentStepName(activeSteps[currentIndex + 1])
+    }
+  }
+
+  // Fonction pour revenir à l'étape précédente
+  const goToPreviousStep = () => {
+    const activeSteps = getActiveSteps()
+    const currentIndex = activeSteps.indexOf(currentStepName)
+    
+    if (currentIndex > 0) {
+      setCurrentStepName(activeSteps[currentIndex - 1])
+    }
+  }
+
+  // Vérifier si c'est la dernière étape
+  const isLastStep = () => {
+    const activeSteps = getActiveSteps()
+    return currentStepName === activeSteps[activeSteps.length - 1]
+  }
+
+  // Vérifier si c'est la première étape
+  const isFirstStep = () => {
+    const activeSteps = getActiveSteps()
+    return currentStepName === activeSteps[0]
+  }
+
+  // Initialiser la première étape quand la session est chargée
+  useEffect(() => {
+    if (session) {
+      const activeSteps = getActiveSteps()
+      if (activeSteps.length > 0) {
+        setCurrentStepName(activeSteps[0])
+      }
+    }
+  }, [session]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleNextStep = () => {
-    // Validation des prédictions si nécessaire
-    if (currentStep === 1 && session?.include_predictions) {
+    // Validation des prédictions si on est sur cette étape
+    if (currentStepName === 'predictions') {
       if (!predictedTopId || !predictedFlopId) {
         alert('Veuillez faire vos prédictions TOP et FLOP')
         return
@@ -173,11 +231,11 @@ export default function VotePage() {
       }
     }
 
-    setCurrentStep(currentStep + 1)
+    goToNextStep()
   }
 
   const handlePreviousStep = () => {
-    setCurrentStep(currentStep - 1)
+    goToPreviousStep()
   }
 
   const handleSubmitVote = async () => {
@@ -223,8 +281,8 @@ export default function VotePage() {
         flop_comment: flopComment.trim()
       }
 
-      // Ajouter les prédictions si activées
-      if (session?.include_predictions) {
+      // Ajouter les prédictions si activées ET renseignées
+      if (session?.include_predictions && predictedTopId && predictedFlopId) {
         voteData.predicted_top_id = predictedTopId
         voteData.predicted_flop_id = predictedFlopId
       }
@@ -245,7 +303,13 @@ export default function VotePage() {
         .from('votes')
         .insert([voteData])
 
-      if (voteError) throw voteError
+      if (voteError) {
+        console.error('❌ Erreur insertion vote:', voteError)
+        console.error('📋 Données du vote:', voteData)
+        throw voteError
+      }
+
+      console.log('✅ Vote inséré avec succès')
 
       // Marquer comme ayant voté
       const { error: updateError } = await supabase
@@ -254,7 +318,12 @@ export default function VotePage() {
         .eq('session_id', sessionId)
         .eq('user_id', user.id)
 
-      if (updateError) throw updateError
+      if (updateError) {
+        console.error('❌ Erreur mise à jour participant:', updateError)
+        throw updateError
+      }
+
+      console.log('✅ Participant marqué comme ayant voté')
 
       alert('Vote enregistré avec succès ! ✅')
       router.push('/dashboard')
@@ -292,10 +361,9 @@ export default function VotePage() {
     )
   }
 
-  const totalSteps = 1 + 
-    (session.include_predictions ? 1 : 0) + 
-    (session.include_best_action ? 1 : 0) + 
-    (session.include_worst_action ? 1 : 0)
+  const activeSteps = getActiveSteps()
+  const totalSteps = activeSteps.length
+  const currentStepNumber = activeSteps.indexOf(currentStepName) + 1
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 sm:p-8">
@@ -328,21 +396,21 @@ export default function VotePage() {
           {/* Progress bar */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-400">Étape {currentStep} sur {totalSteps}</span>
+              <span className="text-sm text-gray-400">Étape {currentStepNumber} sur {totalSteps}</span>
               <span className="text-sm text-purple-400 font-semibold">
-                {Math.round((currentStep / totalSteps) * 100)}%
+                {Math.round((currentStepNumber / totalSteps) * 100)}%
               </span>
             </div>
             <div className="w-full bg-slate-700 rounded-full h-2">
               <div 
                 className="bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${(currentStep / totalSteps) * 100}%` }}
+                style={{ width: `${(currentStepNumber / totalSteps) * 100}%` }}
               />
             </div>
           </div>
 
-          {/* Étape 1 : Prédictions (si activé) */}
-          {currentStep === 1 && session.include_predictions && (
+          {/* Étape : Prédictions (si activé) */}
+          {currentStepName === 'predictions' && (
             <div className="space-y-6">
               <div className="bg-purple-900/30 border border-purple-500/30 rounded-lg p-4 mb-6">
                 <div className="flex items-start gap-3">
@@ -407,7 +475,7 @@ export default function VotePage() {
           )}
 
           {/* Étape principale : TOP et FLOP (toujours affiché) */}
-          {currentStep === (session.include_predictions ? 2 : 1) && (
+          {currentStepName === 'main' && (
             <div className="space-y-6">
               <div className="bg-blue-900/30 border border-blue-500/30 rounded-lg p-4 mb-6">
                 <h2 className="text-xl font-bold text-white mb-2">🗳️ Votes obligatoires</h2>
@@ -499,7 +567,7 @@ export default function VotePage() {
               </div>
 
               <div className="flex gap-4">
-                {session.include_predictions && (
+                {!isFirstStep() && (
                   <button
                     onClick={handlePreviousStep}
                     className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
@@ -509,7 +577,7 @@ export default function VotePage() {
                   </button>
                 )}
                 
-                {(session.include_best_action || session.include_worst_action) ? (
+                {!isLastStep() ? (
                   <button
                     onClick={handleNextStep}
                     className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
@@ -541,8 +609,7 @@ export default function VotePage() {
           )}
 
           {/* Étape : Plus beau geste (si activé) */}
-          {session.include_best_action && 
-           currentStep === (session.include_predictions ? 3 : 2) && (
+          {currentStepName === 'best_action' && (
             <div className="space-y-6">
               <div className="bg-blue-900/30 border border-blue-500/30 rounded-lg p-4 mb-6">
                 <div className="flex items-start gap-3">
@@ -602,7 +669,7 @@ export default function VotePage() {
                   Retour
                 </button>
                 
-                {session.include_worst_action ? (
+                {!isLastStep() ? (
                   <button
                     onClick={handleNextStep}
                     className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
@@ -634,8 +701,7 @@ export default function VotePage() {
           )}
 
           {/* Étape : Plus beau fail (si activé) */}
-          {session.include_worst_action && 
-           currentStep === totalSteps && (
+          {currentStepName === 'worst_action' && (
             <div className="space-y-6">
               <div className="bg-orange-900/30 border border-orange-500/30 rounded-lg p-4 mb-6">
                 <div className="flex items-start gap-3">
