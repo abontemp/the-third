@@ -26,6 +26,7 @@ type Team = {
   description?: string
   userRole: string
   memberCount: number
+  team_code?: string
 }
 
 type Member = {
@@ -129,7 +130,7 @@ export default function DashboardPage() {
         memberships.map(async (membership) => {
           const { data: teamData } = await supabase
             .from('teams')
-            .select('*')
+            .select('id, name, sport, description, team_code')
             .eq('id', membership.team_id)
             .single()
 
@@ -515,14 +516,34 @@ export default function DashboardPage() {
         <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold text-white">Membres de l&apos;équipe</h2>
-            {isCreator && (
-              <button
-                onClick={() => setShowManagerModal(true)}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
-              >
-                Gérer les managers
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {isManager && selectedTeam.team_code && (
+                <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-2 rounded-lg relative group">
+                  <p className="text-xs text-blue-200 mb-1">Code de l'équipe</p>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedTeam.team_code!)
+                      alert('Code copié !')
+                    }}
+                    className="text-2xl font-bold text-white font-mono tracking-wider hover:text-blue-200 transition cursor-pointer"
+                    title="Cliquer pour copier"
+                  >
+                    {selectedTeam.team_code}
+                  </button>
+                  <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap">
+                    Cliquer pour copier
+                  </span>
+                </div>
+              )}
+              {isCreator && (
+                <button
+                  onClick={() => setShowManagerModal(true)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
+                >
+                  Gérer les managers
+                </button>
+              )}
+            </div>
           </div>
           <div className="space-y-3">
             {members.map(member => (
