@@ -1,6 +1,6 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trash2, TrendingUp, Quote, Swords, Award, Sparkles } from 'lucide-react'
+import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trash2, TrendingUp, Quote, Swords, Award, Sparkles, Archive } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import NotificationBell from '@/components/NotificationBell'
@@ -469,6 +469,8 @@ export default function DashboardPage() {
     )
   }
 
+  const activeSessions = votingSessions.filter(s => s.status === 'open' || s.status === 'reading')
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 sm:p-8">
       <div className="max-w-6xl mx-auto">
@@ -566,18 +568,26 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* SECTION VOTES */}
-        {votingSessions.filter(s => s.status !== 'completed').length > 0 && (
+        {/* SECTION VOTES - SESSIONS ACTIVES UNIQUEMENT */}
+        {activeSessions.length > 0 ? (
           <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-6 mb-6">
-            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-              <Vote className="text-purple-400" size={24} />
-              Sessions de vote en cours
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                <Vote className="text-purple-400" size={24} />
+                Sessions de vote actives
+              </h2>
+              <button
+                onClick={() => router.push('/dashboard/votes-archives')}
+                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2"
+              >
+                <Archive size={18} />
+                <span className="hidden sm:inline">Votes précédents</span>
+                <span className="sm:hidden">Archives</span>
+              </button>
+            </div>
             
             <div className="space-y-4">
-              {votingSessions
-                .filter(session => session.status !== 'completed')
-                .map((session) => (
+              {activeSessions.map((session) => (
                 <div 
                   key={session.id}
                   className="bg-slate-800/50 border border-white/10 rounded-lg p-4"
@@ -661,6 +671,22 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
+          </div>
+        ) : (
+          /* Message si aucune session active */
+          <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-8 mb-6 text-center">
+            <Vote className="text-purple-400 mx-auto mb-4" size={48} />
+            <h2 className="text-2xl font-bold text-white mb-2">Aucun vote actif</h2>
+            <p className="text-gray-400 mb-6">
+              Il n&apos;y a pas de session de vote en cours pour le moment
+            </p>
+            <button
+              onClick={() => router.push('/dashboard/votes-archives')}
+              className="bg-slate-700 hover:bg-slate-600 text-white px-6 py-3 rounded-lg font-medium transition inline-flex items-center gap-2"
+            >
+              <Archive size={20} />
+              Voir les votes précédents
+            </button>
           </div>
         )}
 
