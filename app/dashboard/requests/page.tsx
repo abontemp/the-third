@@ -31,23 +31,39 @@ export default function RequestsPage() {
 
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
+        console.log('❌ Pas d\'utilisateur')
         router.push('/login')
         return
       }
 
+      console.log('👤 User ID:', user.id)
+
       // Vérifier que l'utilisateur est manager
-      const { data: membership } = await supabase
+      const { data: membership, error: membershipError } = await supabase
         .from('team_members')
         .select('team_id, role')
         .eq('user_id', user.id)
-        .single()
+        .maybeSingle()
 
-      if (!membership || (membership.role !== 'manager' && membership.role !== 'creator')) {
+      console.log('📋 Membership:', membership)
+      console.log('🔧 Role:', membership?.role)
+      console.log('⚠️ Error:', membershipError)
+
+      if (!membership) {
+        console.log('❌ Aucun membership trouvé')
+        alert('Vous n\'êtes membre d\'aucune équipe')
+        router.push('/dashboard')
+        return
+      }
+
+      if (membership.role !== 'manager' && membership.role !== 'creator') {
+        console.log('❌ Rôle insuffisant:', membership.role)
         alert('Vous devez être manager pour accéder à cette page')
         router.push('/dashboard')
         return
       }
 
+      console.log('✅ Accès autorisé - Team ID:', membership.team_id)
       setTeamId(membership.team_id)
 
       // Récupérer les demandes en attente
