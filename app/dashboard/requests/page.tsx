@@ -40,10 +40,39 @@ export default function RequestsPage() {
 
       // Récupérer le team_id depuis localStorage (même logique que le dashboard)
       const savedTeamId = localStorage.getItem('current_team_id')
+      console.log('📦 Contenu complet du localStorage:', {
+        current_team_id: savedTeamId,
+        all_keys: Object.keys(localStorage),
+        all_values: Object.entries(localStorage).reduce((acc, [key, value]) => ({...acc, [key]: value}), {})
+      })
+      
       if (!savedTeamId) {
         console.log('❌ Aucun team_id dans localStorage')
-        alert('Aucune équipe sélectionnée')
-        router.push('/dashboard')
+        // Au lieu de rediriger, essayons de récupérer depuis team_members
+        console.log('🔄 Tentative de récupération depuis team_members...')
+        
+        const { data: memberships } = await supabase
+          .from('team_members')
+          .select('team_id, role')
+          .eq('user_id', user.id)
+        
+        console.log('📋 Memberships trouvés:', memberships)
+        
+        const managerMembership = memberships?.find(m => m.role === 'manager' || m.role === 'creator')
+        
+        if (!managerMembership) {
+          alert('Vous devez être manager d\'une équipe')
+          router.push('/dashboard')
+          return
+        }
+        
+        console.log('✅ Récupération réussie, team_id:', managerMembership.team_id)
+        localStorage.setItem('current_team_id', managerMembership.team_id)
+        setTeamId(managerMembership.team_id)
+        
+        // Continuer avec ce team_id
+        const recoveredTeamId = managerMembership.team_id
+        await loadRequestsForTeam(recoveredTeamId, user.id)
         return
       }
 
