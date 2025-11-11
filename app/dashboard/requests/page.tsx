@@ -38,43 +38,52 @@ export default function RequestsPage() {
 
       console.log('👤 User ID:', user.id)
 
-      // Vérifier que l'utilisateur est manager
-      const { data: membership, error: membershipError } = await supabase
+      // Récupérer TOUTES les équipes de l'utilisateur
+      const { data: memberships, error: membershipError } = await supabase
         .from('team_members')
         .select('team_id, role')
         .eq('user_id', user.id)
-        .maybeSingle()
 
-      console.log('📋 Membership:', membership)
-      console.log('🔧 Role:', membership?.role)
+      console.log('📋 Memberships trouvés:', memberships?.length || 0)
+      console.log('📋 Memberships:', memberships)
       console.log('⚠️ Error:', membershipError)
 
-      if (!membership) {
+      if (!memberships || memberships.length === 0) {
         console.log('❌ Aucun membership trouvé')
         alert('Vous n\'êtes membre d\'aucune équipe')
         router.push('/dashboard')
         return
       }
 
-      if (membership.role !== 'manager' && membership.role !== 'creator') {
-        console.log('❌ Rôle insuffisant:', membership.role)
+      // Trouver un membership manager ou creator
+      const managerMembership = memberships.find(m => m.role === 'manager' || m.role === 'creator')
+
+      if (!managerMembership) {
+        console.log('❌ Aucun rôle manager trouvé')
+        console.log('Rôles disponibles:', memberships.map(m => m.role))
         alert('Vous devez être manager pour accéder à cette page')
         router.push('/dashboard')
         return
       }
 
-      console.log('✅ Accès autorisé - Team ID:', membership.team_id)
-      setTeamId(membership.team_id)
+      console.log('✅ Accès autorisé - Team ID:', managerMembership.team_id)
+      console.log('✅ Rôle:', managerMembership.role)
+      setTeamId(managerMembership.team_id)
 
       // Récupérer les demandes en attente
       const { data: requestsData, error: requestsError } = await supabase
         .from('join_requests')
         .select('id, user_id, created_at')
-        .eq('team_id', membership.team_id)
+        .eq('team_id', managerMembership.team_id)
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
 
-      if (requestsError) throw requestsError
+      console.log('📨 Demandes trouvées:', requestsData?.length || 0)
+
+      if (requestsError) {
+        console.error('❌ Erreur demandes:', requestsError)
+        throw requestsError
+      }
 
       if (!requestsData || requestsData.length === 0) {
         setRequests([])
