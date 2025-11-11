@@ -1,202 +1,205 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Check, X, Loader, Users, Clock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import { ArrowLeft, Loader, UserPlus, Check, X, Users } from 'lucide-react'
 
 type JoinRequest = {
   id: string
   user_id: string
-  created_at: string
   user_name: string
   user_email: string
+  created_at: string
 }
 
-export default function TeamRequestsPage() {
+export default function RequestsPage() {
   const router = useRouter()
   const supabase = createClient()
-  
+
   const [loading, setLoading] = useState(true)
+  const [requests, setRequests] = useState<JoinRequest[]>([])
   const [processing, setProcessing] = useState<string | null>(null)
   const [teamId, setTeamId] = useState<string>('')
-  const [teamName, setTeamName] = useState<string>('')
-  const [requests, setRequests] = useState<JoinRequest[]>([])
 
   useEffect(() => {
     loadRequests()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadRequests = async () => {
     try {
       setLoading(true)
-      
-      // Vérifier l'authentification
+
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
+        console.log('❌ Pas d\'utilisateur')
         router.push('/login')
         return
       }
 
-      // Récupérer le team_id depuis localStorage
+      console.log('👤 User ID:', user.id)
+
+      // Récupérer le team_id depuis localStorage (même logique que le dashboard)
       const savedTeamId = localStorage.getItem('current_team_id')
       if (!savedTeamId) {
+        console.log('❌ Aucun team_id dans localStorage')
         alert('Aucune équipe sélectionnée')
         router.push('/dashboard')
         return
       }
 
-      // Vérifier que l'utilisateur est manager ou creator
-      const { data: membershipData } = await supabase
+      console.log('📦 Team ID depuis localStorage:', savedTeamId)
+
+      // Vérifier que l'utilisateur est bien manager/creator de cette équipe
+      const { data: membership, error: membershipError } = await supabase
         .from('team_members')
-        .select('role, team_id')
+        .select('role')
         .eq('user_id', user.id)
         .eq('team_id', savedTeamId)
         .single()
 
-      if (!membershipData || !['manager', 'creator'].includes(membershipData.role)) {
-        alert('Accès refusé : vous devez être manager ou créateur de l\'équipe')
+      console.log('📋 Membership trouvé:', membership)
+      console.log('⚠️ Error:', membershipError)
+
+      if (!membership || !['manager', 'creator'].includes(membership.role)) {
+        console.log('❌ Pas de rôle manager/creator pour cette équipe')
+        alert('Vous devez être manager pour accéder à cette page')
         router.push('/dashboard')
         return
       }
 
+      console.log('✅ Accès autorisé - Rôle:', membership.role)
       setTeamId(savedTeamId)
 
-      // Récupérer le nom de l'équipe
-      const { data: teamData } = await supabase
-        .from('teams')
-        .select('name')
-        .eq('id', savedTeamId)
-        .single()
-
-      if (teamData) {
-        setTeamName(teamData.name)
-      }
-
-      // Récupérer les demandes en attente avec les infos des utilisateurs
+      // Récupérer les demandes en attente
+      console.log('🔍 Recherche des demandes pour team:', savedTeamId)
+      
       const { data: requestsData, error: requestsError } = await supabase
         .from('join_requests')
-        .select(`
-          id,
-          user_id,
-          created_at,
-          profiles:user_id (
-            first_name,
-            last_name,
-            email,
-            nickname
-          )
-        `)
+        .select('id, user_id, created_at')
         .eq('team_id', savedTeamId)
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
 
-      if (requestsError) throw requestsError
+      console.log('📨 Demandes trouvées:', requestsData?.length || 0)
+      console.log('📋 Détails:', requestsData)
 
-      // Formater les données
-      const formattedRequests = requestsData?.map(req => ({
-        id: req.id,
-        user_id: req.user_id,
-        created_at: req.created_at,
-        user_name: req.profiles?.nickname || 
-                   `${req.profiles?.first_name || ''} ${req.profiles?.last_name || ''}`.trim() ||
-                   'Utilisateur inconnu',
-        user_email: req.profiles?.email || ''
-      })) || []
+      if (requestsError) {
+        console.error('❌ Erreur demandes:', requestsError)
+        throw requestsError
+      }
+
+      if (!requestsData || requestsData.length === 0) {
+        console.log('ℹ️ Aucune demande en attente')
+        setRequests([])
+        setLoading(false)
+        return
+      }
+
+      // Récupérer les profils des demandeurs
+      const userIds = requestsData.map(r => r.user_id)
+      console.log('👥 User IDs à rechercher:', userIds)
+      
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, nickname, email')
+        .in('id', userIds)
+
+      console.log('👤 Profils trouvés:', profilesData?.length || 0)
+      if (profilesError) console.error('⚠️ Erreur profils:', profilesError)
+
+      // Créer un map des profils pour un accès facile
+      const profilesMap: Record<string, { name: string, email: string }> = {}
+      profilesData?.forEach(p => {
+        let displayName = 'Utilisateur'
+        if (p.nickname?.trim()) {
+          displayName = p.nickname.trim()
+        } else if (p.first_name || p.last_name) {
+          const firstName = p.first_name?.trim() || ''
+          const lastName = p.last_name?.trim() || ''
+          displayName = `${firstName} ${lastName}`.trim()
+        }
+        
+        profilesMap[p.id] = {
+          name: displayName,
+          email: p.email || 'Email inconnu'
+        }
+      })
+
+      console.log('🗺️ Profiles map:', profilesMap)
+
+      // Formater les demandes avec les infos des profils
+      const formattedRequests: JoinRequest[] = requestsData.map(r => ({
+        id: r.id,
+        user_id: r.user_id,
+        user_name: profilesMap[r.user_id]?.name || 'Utilisateur',
+        user_email: profilesMap[r.user_id]?.email || 'Email inconnu',
+        created_at: r.created_at
+      }))
+
+      console.log('✅ Demandes formatées:', formattedRequests)
 
       setRequests(formattedRequests)
-    } catch (error) {
-      console.error('Erreur lors du chargement des demandes:', error)
+
+    } catch (err) {
+      console.error('Erreur:', err)
       alert('Erreur lors du chargement des demandes')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleRequest = async (requestId: string, userId: string, userName: string, accept: boolean) => {
+  const handleRequest = async (requestId: string, userId: string, action: 'accept' | 'reject') => {
     try {
       setProcessing(requestId)
 
-      if (accept) {
-        // Accepter : mettre à jour le statut de la demande
-        const { error: updateError } = await supabase
-          .from('join_requests')
-          .update({ status: 'accepted' })
-          .eq('id', requestId)
-
-        if (updateError) throw updateError
-
+      if (action === 'accept') {
         // Ajouter le membre à l'équipe
         const { error: memberError } = await supabase
           .from('team_members')
-          .insert({
+          .insert([{
             team_id: teamId,
             user_id: userId,
             role: 'member'
-          })
+          }])
 
         if (memberError) throw memberError
-
-        // Créer une notification pour l'utilisateur
-        await supabase
-          .from('notifications')
-          .insert({
-            user_id: userId,
-            type: 'team_join_accepted',
-            title: '✅ Demande acceptée',
-            message: `Votre demande pour rejoindre l'équipe "${teamName}" a été acceptée !`,
-            team_id: teamId
-          })
-
-        alert(`${userName} a été accepté dans l'équipe !`)
-      } else {
-        // Refuser : mettre à jour le statut
-        const { error: updateError } = await supabase
-          .from('join_requests')
-          .update({ status: 'rejected' })
-          .eq('id', requestId)
-
-        if (updateError) throw updateError
-
-        // Créer une notification pour l'utilisateur
-        await supabase
-          .from('notifications')
-          .insert({
-            user_id: userId,
-            type: 'team_join_rejected',
-            title: '❌ Demande refusée',
-            message: `Votre demande pour rejoindre l'équipe "${teamName}" a été refusée.`,
-            team_id: teamId
-          })
-
-        alert(`La demande de ${userName} a été refusée`)
       }
+
+      // Mettre à jour le statut de la demande
+      const { error: updateError } = await supabase
+        .from('join_requests')
+        .update({ status: action === 'accept' ? 'approved' : 'rejected' })
+        .eq('id', requestId)
+
+      if (updateError) throw updateError
+
+      // Créer une notification pour l'utilisateur
+      const { error: notifError } = await supabase
+        .from('notifications')
+        .insert([{
+          user_id: userId,
+          type: action === 'accept' ? 'team_join_accepted' : 'team_join_rejected',
+          title: action === 'accept' ? 'Demande acceptée !' : 'Demande refusée',
+          message: action === 'accept' 
+            ? 'Votre demande d\'adhésion a été acceptée. Bienvenue dans l\'équipe !' 
+            : 'Votre demande d\'adhésion a été refusée.',
+          team_id: teamId,
+          read: false
+        }])
+
+      if (notifError) console.error('Erreur notification:', notifError)
+
+      alert(action === 'accept' ? '✅ Membre ajouté !' : '❌ Demande refusée')
 
       // Recharger les demandes
       await loadRequests()
-    } catch (error) {
-      console.error('Erreur:', error)
+
+    } catch (err) {
+      console.error('Erreur:', err)
       alert('Erreur lors du traitement de la demande')
     } finally {
       setProcessing(null)
     }
-  }
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
-    
-    if (diffInHours < 1) return 'Il y a moins d\'une heure'
-    if (diffInHours < 24) return `Il y a ${diffInHours} heure${diffInHours > 1 ? 's' : ''}`
-    
-    const diffInDays = Math.floor(diffInHours / 24)
-    if (diffInDays < 7) return `Il y a ${diffInDays} jour${diffInDays > 1 ? 's' : ''}`
-    
-    return date.toLocaleDateString('fr-FR', { 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
-    })
   }
 
   if (loading) {
@@ -208,75 +211,94 @@ export default function TeamRequestsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-gray-400 hover:text-white transition mb-4 flex items-center gap-2"
-          >
-            <ArrowLeft size={20} />
-            Retour au dashboard
-          </button>
-          <h1 className="text-4xl font-bold text-white mb-2">Demandes d'adhésion</h1>
-          <p className="text-gray-400">{teamName}</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+      <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="flex items-center gap-2 text-gray-400 hover:text-white transition"
+            >
+              <ArrowLeft size={20} />
+              <span>Retour au dashboard</span>
+            </button>
+            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              <UserPlus size={24} />
+              Demandes d&apos;adhésion
+            </h1>
+          </div>
         </div>
+      </header>
 
-        {/* Liste des demandes */}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
         {requests.length === 0 ? (
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-12 text-center">
-            <Users className="mx-auto mb-4 text-gray-400" size={64} />
-            <h3 className="text-xl font-semibold text-white mb-2">
-              Aucune demande en attente
-            </h3>
+          <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-12 text-center">
+            <Users className="text-gray-600 mx-auto mb-4" size={64} />
+            <h2 className="text-2xl font-bold text-white mb-2">Aucune demande en attente</h2>
             <p className="text-gray-400">
-              Les nouvelles demandes d'adhésion apparaîtront ici
+              Les nouvelles demandes d&apos;adhésion apparaîtront ici
             </p>
           </div>
         ) : (
           <div className="space-y-4">
+            <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-4 mb-6">
+              <p className="text-white font-semibold">
+                {requests.length} demande{requests.length > 1 ? 's' : ''} en attente
+              </p>
+            </div>
+
             {requests.map((request) => (
               <div
                 key={request.id}
-                className="bg-white/10 backdrop-blur-md rounded-xl p-6 hover:bg-white/15 transition"
+                className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6 hover:border-blue-500/50 transition"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-white mb-1">
-                      {request.user_name}
-                    </h3>
-                    <p className="text-gray-400 text-sm mb-2">{request.user_email}</p>
-                    <div className="flex items-center gap-2 text-gray-400 text-sm">
-                      <Clock size={16} />
-                      <span>{formatDate(request.created_at)}</span>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                        {request.user_name[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-white">{request.user_name}</h3>
+                        <p className="text-gray-400 text-sm">{request.user_email}</p>
+                      </div>
                     </div>
+                    <p className="text-gray-500 text-sm">
+                      Demande envoyée le {new Date(request.created_at).toLocaleDateString('fr-FR', {
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
                   </div>
 
                   <div className="flex gap-3">
                     <button
-                      onClick={() => handleRequest(request.id, request.user_id, request.user_name, false)}
+                      onClick={() => handleRequest(request.id, request.user_id, 'accept')}
                       disabled={processing === request.id}
-                      className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-semibold transition flex items-center gap-2"
+                      className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center gap-2"
                     >
                       {processing === request.id ? (
-                        <Loader className="animate-spin" size={20} />
+                        <Loader className="animate-spin" size={18} />
                       ) : (
-                        <X size={20} />
+                        <Check size={18} />
                       )}
-                      Refuser
+                      <span>Accepter</span>
                     </button>
                     <button
-                      onClick={() => handleRequest(request.id, request.user_id, request.user_name, true)}
+                      onClick={() => handleRequest(request.id, request.user_id, 'reject')}
                       disabled={processing === request.id}
-                      className="bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-semibold transition flex items-center gap-2"
+                      className="bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center gap-2"
                     >
                       {processing === request.id ? (
-                        <Loader className="animate-spin" size={20} />
+                        <Loader className="animate-spin" size={18} />
                       ) : (
-                        <Check size={20} />
+                        <X size={18} />
                       )}
-                      Accepter
+                      <span>Refuser</span>
                     </button>
                   </div>
                 </div>
