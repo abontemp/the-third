@@ -1,6 +1,6 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trash2, TrendingUp, Quote, Swords, Award, Sparkles, Archive } from 'lucide-react'
+import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trash2, TrendingUp, Quote, Swords, Award, Sparkles, Archive, UserPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import NotificationBell from '@/components/NotificationBell'
@@ -53,6 +53,7 @@ export default function DashboardPage() {
   const [hasVotes, setHasVotes] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showManagerModal, setShowManagerModal] = useState(false)
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0)
 
   const handleToggleManager = async (member: Member) => {
     if (!selectedTeam) return
@@ -320,6 +321,19 @@ export default function DashboardPage() {
 
       setMembers(membersWithNames)
 
+      // Compter les demandes en attente (pour les managers)
+      if (teamData.userRole === 'manager' || teamData.userRole === 'creator') {
+        const { count: requestsCount } = await supabase
+          .from('join_requests')
+          .select('*', { count: 'exact', head: true })
+          .eq('team_id', teamId)
+          .eq('status', 'pending')
+
+        setPendingRequestsCount(requestsCount || 0)
+      } else {
+        setPendingRequestsCount(0)
+      }
+
       const { data: currentSeason, error: seasonError } = await supabase
         .from('seasons')
         .select('id')
@@ -521,27 +535,43 @@ export default function DashboardPage() {
         </div>
 
         <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-white">Membres de l&apos;équipe</h2>
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <h2 className="text-2xl font-bold text-white">Membres de l&apos;équipe</h2>
               {isManager && selectedTeam.team_code && (
-                <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-2 rounded-lg relative group">
-                  <p className="text-xs text-blue-200 mb-1">Code de l'équipe</p>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(selectedTeam.team_code!)
-                      alert('Code copié !')
-                    }}
-                    className="text-2xl font-bold text-white font-mono tracking-wider hover:text-blue-200 transition cursor-pointer"
-                    title="Cliquer pour copier"
-                  >
-                    {selectedTeam.team_code}
-                  </button>
-                  <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap">
-                    Cliquer pour copier
-                  </span>
+                <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-3 py-1.5 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-blue-200">Code:</span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedTeam.team_code!)
+                        alert('Code copié !')
+                      }}
+                      className="text-lg font-bold text-white font-mono tracking-wider hover:text-blue-200 transition cursor-pointer"
+                      title="Cliquer pour copier"
+                    >
+                      {selectedTeam.team_code}
+                    </button>
+                  </div>
                 </div>
               )}
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {/* Badge des demandes en attente */}
+              {isManager && pendingRequestsCount > 0 && (
+                <button
+                  onClick={() => router.push('/dashboard/requests')}
+                  className="relative bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 animate-pulse"
+                >
+                  <UserPlus size={20} />
+                  <span className="hidden sm:inline">Demandes en attente</span>
+                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-slate-900">
+                    {pendingRequestsCount}
+                  </span>
+                </button>
+              )}
+              
               {isCreator && (
                 <button
                   onClick={() => setShowManagerModal(true)}

@@ -1,26 +1,25 @@
 'use client'
-
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Users, Check, X, Loader, Mail, Clock } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { ArrowLeft, Loader, UserPlus, Check, X, Users } from 'lucide-react'
 
-interface PendingRequest {
+type JoinRequest = {
   id: string
   user_id: string
-  joined_at: string
   user_name: string
   user_email: string
+  created_at: string
 }
 
-export default function TeamRequestsPage() {
+export default function RequestsPage() {
   const router = useRouter()
   const supabase = createClient()
+
   const [loading, setLoading] = useState(true)
+  const [requests, setRequests] = useState<JoinRequest[]>([])
   const [processing, setProcessing] = useState<string | null>(null)
-  const [requests, setRequests] = useState<PendingRequest[]>([])
-  const [teamId, setTeamId] = useState<string | null>(null)
-  const [teamName, setTeamName] = useState('')
+  const [teamId, setTeamId] = useState<string>('')
 
   useEffect(() => {
     loadRequests()
@@ -36,159 +35,127 @@ export default function TeamRequestsPage() {
         return
       }
 
-      // Récupérer l'équipe sélectionnée
-      const savedTeamId = localStorage.getItem('selectedTeamId')
-      if (!savedTeamId) {
-        alert('Aucune équipe sélectionnée')
-        router.push('/dashboard')
-        return
-      }
-
-      setTeamId(savedTeamId)
-
-      // Vérifier que l'utilisateur est manager ou créateur
+      // Vérifier que l'utilisateur est manager
       const { data: membership } = await supabase
         .from('team_members')
-        .select('role')
-        .eq('team_id', savedTeamId)
+        .select('team_id, role')
         .eq('user_id', user.id)
         .single()
 
-      if (!membership || (membership.role !== 'creator' && membership.role !== 'manager')) {
-        alert('Accès refusé : vous devez être manager')
+      if (!membership || (membership.role !== 'manager' && membership.role !== 'creator')) {
+        alert('Vous devez être manager pour accéder à cette page')
         router.push('/dashboard')
         return
       }
 
-      // Charger les infos de l'équipe
-      const { data: teamData } = await supabase
-        .from('teams')
-        .select('name')
-        .eq('id', savedTeamId)
-        .single()
+      setTeamId(membership.team_id)
 
-      if (teamData) {
-        setTeamName(teamData.name)
-      }
-
-      // Charger les demandes en attente
-      const { data: pendingRequests } = await supabase
-        .from('team_members')
-        .select('id, user_id, joined_at')
-        .eq('team_id', savedTeamId)
+      // Récupérer les demandes en attente
+      const { data: requestsData, error: requestsError } = await supabase
+        .from('join_requests')
+        .select('id, user_id, created_at')
+        .eq('team_id', membership.team_id)
         .eq('status', 'pending')
-        .order('joined_at', { ascending: false })
+        .order('created_at', { ascending: true })
 
-      if (pendingRequests && pendingRequests.length > 0) {
-        // Charger les profils des demandeurs
-        const userIds = pendingRequests.map(r => r.user_id)
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, first_name, last_name, email, nickname')
-          .in('id', userIds)
+      if (requestsError) throw requestsError
 
-        const profilesMap: Record<string, {
-          id: string
-          first_name?: string
-          last_name?: string
-          email?: string
-          nickname?: string
-        }> = {}
-        profiles?.forEach(p => {
-          profilesMap[p.id] = p
-        })
-
-        const formattedRequests = pendingRequests.map(req => {
-          const profile = profilesMap[req.user_id]
-          let displayName = 'Utilisateur inconnu'
-
-          if (profile) {
-            if (profile.nickname?.trim()) {
-              displayName = profile.nickname.trim()
-            } else if (profile.first_name || profile.last_name) {
-              const firstName = profile.first_name?.trim() || ''
-              const lastName = profile.last_name?.trim() || ''
-              displayName = `${firstName} ${lastName}`.trim()
-            } else if (profile.email) {
-              displayName = profile.email
-            }
-          }
-
-          return {
-            id: req.id,
-            user_id: req.user_id,
-            joined_at: req.joined_at,
-            user_name: displayName,
-            user_email: profile?.email || 'Email inconnu'
-          }
-        })
-
-        setRequests(formattedRequests)
+      if (!requestsData || requestsData.length === 0) {
+        setRequests([])
+        setLoading(false)
+        return
       }
 
-      setLoading(false)
-    } catch (error) {
-      console.error('Erreur:', error)
+      // Récupérer les profils des demandeurs
+      const userIds = requestsData.map(r => r.user_id)
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, nickname, email')
+        .in('id', userIds)
+
+      const profilesMap: Record<string, { name: string, email: string }> = {}
+      profilesData?.forEach(p => {
+        let displayName = 'Utilisateur'
+        if (p.nickname?.trim()) {
+          displayName = p.nickname.trim()
+        } else if (p.first_name || p.last_name) {
+          const firstName = p.first_name?.trim() || ''
+          const lastName = p.last_name?.trim() || ''
+          displayName = `${firstName} ${lastName}`.trim()
+        }
+        
+        profilesMap[p.id] = {
+          name: displayName,
+          email: p.email || 'Email inconnu'
+        }
+      })
+
+      const formattedRequests = requestsData.map(r => ({
+        id: r.id,
+        user_id: r.user_id,
+        user_name: profilesMap[r.user_id]?.name || 'Utilisateur',
+        user_email: profilesMap[r.user_id]?.email || 'Email inconnu',
+        created_at: r.created_at
+      }))
+
+      setRequests(formattedRequests)
+
+    } catch (err) {
+      console.error('Erreur:', err)
       alert('Erreur lors du chargement des demandes')
+    } finally {
       setLoading(false)
     }
   }
 
-  const handleRequest = async (requestId: string, userId: string, userName: string, action: 'accept' | 'reject') => {
-    if (!teamId) return
-
+  const handleRequest = async (requestId: string, userId: string, action: 'accept' | 'reject') => {
     try {
       setProcessing(requestId)
 
       if (action === 'accept') {
-        // Accepter la demande
-        const { error: updateError } = await supabase
+        // Ajouter le membre à l'équipe
+        const { error: memberError } = await supabase
           .from('team_members')
-          .update({ status: 'accepted' })
-          .eq('id', requestId)
-
-        if (updateError) throw updateError
-
-        // Créer une notification pour l'utilisateur
-        await supabase
-          .from('notifications')
-          .insert({
-            user_id: userId,
-            type: 'team_join_accepted',
-            title: '✅ Demande acceptée',
-            message: `Votre demande pour rejoindre l'équipe "${teamName}" a été acceptée !`,
+          .insert([{
             team_id: teamId,
-            team_member_id: requestId
-          })
-
-        alert(`${userName} a été accepté dans l'équipe !`)
-      } else {
-        // Refuser la demande (supprimer le membre ou marquer comme rejected)
-        const { error: deleteError } = await supabase
-          .from('team_members')
-          .delete()
-          .eq('id', requestId)
-
-        if (deleteError) throw deleteError
-
-        // Créer une notification pour l'utilisateur
-        await supabase
-          .from('notifications')
-          .insert({
             user_id: userId,
-            type: 'team_join_rejected',
-            title: '❌ Demande refusée',
-            message: `Votre demande pour rejoindre l'équipe "${teamName}" a été refusée.`,
-            team_id: teamId
-          })
+            role: 'member'
+          }])
 
-        alert(`La demande de ${userName} a été refusée`)
+        if (memberError) throw memberError
       }
+
+      // Mettre à jour le statut de la demande
+      const { error: updateError } = await supabase
+        .from('join_requests')
+        .update({ status: action === 'accept' ? 'approved' : 'rejected' })
+        .eq('id', requestId)
+
+      if (updateError) throw updateError
+
+      // Créer une notification pour l'utilisateur
+      const { error: notifError } = await supabase
+        .from('notifications')
+        .insert([{
+          user_id: userId,
+          type: action === 'accept' ? 'team_join_accepted' : 'team_join_rejected',
+          title: action === 'accept' ? 'Demande acceptée !' : 'Demande refusée',
+          message: action === 'accept' 
+            ? 'Votre demande d\'adhésion a été acceptée. Bienvenue dans l\'équipe !' 
+            : 'Votre demande d\'adhésion a été refusée.',
+          team_id: teamId,
+          read: false
+        }])
+
+      if (notifError) console.error('Erreur notification:', notifError)
+
+      alert(action === 'accept' ? '✅ Membre ajouté !' : '❌ Demande refusée')
 
       // Recharger les demandes
       await loadRequests()
-    } catch (error) {
-      console.error('Erreur:', error)
+
+    } catch (err) {
+      console.error('Erreur:', err)
       alert('Erreur lors du traitement de la demande')
     } finally {
       setProcessing(null)
@@ -204,63 +171,73 @@ export default function TeamRequestsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-gray-400 hover:text-white transition mb-4"
-          >
-            ← Retour au dashboard
-          </button>
-          <h1 className="text-4xl font-bold text-white mb-2">Demandes d'adhésion</h1>
-          <p className="text-gray-400">{teamName}</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+      <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="flex items-center gap-2 text-gray-400 hover:text-white transition"
+            >
+              <ArrowLeft size={20} />
+              <span>Retour au dashboard</span>
+            </button>
+            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              <UserPlus size={24} />
+              Demandes d&apos;adhésion
+            </h1>
+          </div>
         </div>
+      </header>
 
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
         {requests.length === 0 ? (
           <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-12 text-center">
-            <Users className="text-gray-400 mx-auto mb-4" size={64} />
+            <Users className="text-gray-600 mx-auto mb-4" size={64} />
             <h2 className="text-2xl font-bold text-white mb-2">Aucune demande en attente</h2>
-            <p className="text-gray-400">Les nouvelles demandes apparaîtront ici</p>
+            <p className="text-gray-400">
+              Les nouvelles demandes d&apos;adhésion apparaîtront ici
+            </p>
           </div>
         ) : (
           <div className="space-y-4">
+            <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-4 mb-6">
+              <p className="text-white font-semibold">
+                {requests.length} demande{requests.length > 1 ? 's' : ''} en attente
+              </p>
+            </div>
+
             {requests.map((request) => (
               <div
                 key={request.id}
-                className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6"
+                className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-6 hover:border-blue-500/50 transition"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
-                        {request.user_name[0].toUpperCase()}
+                        {request.user_name[0]?.toUpperCase() || '?'}
                       </div>
                       <div>
                         <h3 className="text-xl font-bold text-white">{request.user_name}</h3>
-                        <div className="flex items-center gap-2 text-gray-400 text-sm">
-                          <Mail size={14} />
-                          <span>{request.user_email}</span>
-                        </div>
+                        <p className="text-gray-400 text-sm">{request.user_email}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 text-gray-400 text-sm mt-3">
-                      <Clock size={14} />
-                      <span>
-                        Demande envoyée le {new Date(request.joined_at).toLocaleDateString('fr-FR', {
-                          day: 'numeric',
-                          month: 'long',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    </div>
+                    <p className="text-gray-500 text-sm">
+                      Demande envoyée le {new Date(request.created_at).toLocaleDateString('fr-FR', {
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
                   </div>
 
                   <div className="flex gap-3">
                     <button
-                      onClick={() => handleRequest(request.id, request.user_id, request.user_name, 'accept')}
+                      onClick={() => handleRequest(request.id, request.user_id, 'accept')}
                       disabled={processing === request.id}
                       className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center gap-2"
                     >
@@ -272,7 +249,7 @@ export default function TeamRequestsPage() {
                       <span>Accepter</span>
                     </button>
                     <button
-                      onClick={() => handleRequest(request.id, request.user_id, request.user_name, 'reject')}
+                      onClick={() => handleRequest(request.id, request.user_id, 'reject')}
                       disabled={processing === request.id}
                       className="bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center gap-2"
                     >
