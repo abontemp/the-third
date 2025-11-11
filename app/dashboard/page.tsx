@@ -323,11 +323,26 @@ export default function DashboardPage() {
 
       // Compter les demandes en attente (pour les managers)
       if (teamData.userRole === 'manager' || teamData.userRole === 'creator') {
-        const { count: requestsCount } = await supabase
+        console.log('🔢 Comptage des demandes pour team:', teamId)
+        
+        const { count: requestsCount, error: countError } = await supabase
           .from('join_requests')
           .select('*', { count: 'exact', head: true })
           .eq('team_id', teamId)
           .eq('status', 'pending')
+
+        console.log('📊 Count result:', requestsCount)
+        console.log('⚠️ Count error:', countError)
+
+        // Vérifier avec un select normal
+        const { data: requestsDebug, error: debugError } = await supabase
+          .from('join_requests')
+          .select('id, status, team_id')
+          .eq('team_id', teamId)
+          .eq('status', 'pending')
+        
+        console.log('🔍 Debug - Requests trouvées:', requestsDebug)
+        console.log('⚠️ Debug error:', debugError)
 
         setPendingRequestsCount(requestsCount || 0)
       } else {
