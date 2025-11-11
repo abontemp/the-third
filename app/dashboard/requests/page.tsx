@@ -38,74 +38,40 @@ export default function RequestsPage() {
 
       console.log('👤 User ID:', user.id)
 
-      // Récupérer le team_id depuis localStorage (même logique que le dashboard)
-      const savedTeamId = localStorage.getItem('current_team_id')
-      console.log('📦 Contenu complet du localStorage:', {
-        current_team_id: savedTeamId,
-        all_keys: Object.keys(localStorage),
-        all_values: Object.entries(localStorage).reduce((acc, [key, value]) => ({...acc, [key]: value}), {})
-      })
-      
-      if (!savedTeamId) {
-        console.log('❌ Aucun team_id dans localStorage')
-        // Au lieu de rediriger, essayons de récupérer depuis team_members
-        console.log('🔄 Tentative de récupération depuis team_members...')
-        
-        const { data: memberships } = await supabase
-          .from('team_members')
-          .select('team_id, role')
-          .eq('user_id', user.id)
-        
-        console.log('📋 Memberships trouvés:', memberships)
-        
-        const managerMembership = memberships?.find(m => m.role === 'manager' || m.role === 'creator')
-        
-        if (!managerMembership) {
-          alert('Vous devez être manager d\'une équipe')
-          router.push('/dashboard')
-          return
-        }
-        
-        console.log('✅ Récupération réussie, team_id:', managerMembership.team_id)
-        localStorage.setItem('current_team_id', managerMembership.team_id)
-        setTeamId(managerMembership.team_id)
-        
-        // Continuer avec ce team_id
-        const recoveredTeamId = managerMembership.team_id
-        await loadRequestsForTeam(recoveredTeamId, user.id)
+      // Récupérer TOUTES les équipes de l'utilisateur comme fallback
+      const { data: memberships } = await supabase
+        .from('team_members')
+        .select('team_id, role')
+        .eq('user_id', user.id)
+
+      console.log('📋 Memberships trouvés:', memberships)
+
+      if (!memberships || memberships.length === 0) {
+        alert('Vous n\'êtes membre d\'aucune équipe')
+        router.push('/dashboard')
         return
       }
 
-      console.log('📦 Team ID depuis localStorage:', savedTeamId)
+      // Trouver un membership manager ou creator
+      const managerMembership = memberships.find(m => m.role === 'manager' || m.role === 'creator')
 
-      // Vérifier que l'utilisateur est bien manager/creator de cette équipe
-      const { data: membership, error: membershipError } = await supabase
-        .from('team_members')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('team_id', savedTeamId)
-        .single()
-
-      console.log('📋 Membership trouvé:', membership)
-      console.log('⚠️ Error:', membershipError)
-
-      if (!membership || !['manager', 'creator'].includes(membership.role)) {
-        console.log('❌ Pas de rôle manager/creator pour cette équipe')
+      if (!managerMembership) {
         alert('Vous devez être manager pour accéder à cette page')
         router.push('/dashboard')
         return
       }
 
-      console.log('✅ Accès autorisé - Rôle:', membership.role)
-      setTeamId(savedTeamId)
+      const teamIdToUse = managerMembership.team_id
+      console.log('✅ Team ID à utiliser:', teamIdToUse)
+      setTeamId(teamIdToUse)
 
       // Récupérer les demandes en attente
-      console.log('🔍 Recherche des demandes pour team:', savedTeamId)
+      console.log('🔍 Recherche des demandes pour team:', teamIdToUse)
       
       const { data: requestsData, error: requestsError } = await supabase
         .from('join_requests')
         .select('id, user_id, created_at')
-        .eq('team_id', savedTeamId)
+        .eq('team_id', teamIdToUse)
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
 
