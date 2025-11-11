@@ -134,28 +134,35 @@ export default function DashboardPage() {
             .eq('id', membership.team_id)
             .single()
 
+          if (!teamData) return null
+
           const { count } = await supabase
             .from('team_members')
             .select('*', { count: 'exact', head: true })
             .eq('team_id', membership.team_id)
 
           return {
-            ...teamData,
+            id: teamData.id,
+            name: teamData.name,
+            sport: teamData.sport,
+            description: teamData.description,
+            team_code: teamData.team_code,
             userRole: membership.role,
             memberCount: count || 0
-          }
+          } as Team
         })
       )
 
-      setTeams(teamsData)
+      const validTeams = teamsData.filter((t): t is Team => t !== null)
+      setTeams(validTeams)
 
-      if (teamsData.length === 1) {
-        await loadTeamDetails(teamsData[0].id, teamsData[0])
+      if (validTeams.length === 1) {
+        await loadTeamDetails(validTeams[0].id, validTeams[0])
       } else {
         const savedTeamId = localStorage.getItem('selectedTeamId')
         
         if (savedTeamId) {
-          const savedTeam = teamsData.find(t => t.id === savedTeamId)
+          const savedTeam = validTeams.find(t => t.id === savedTeamId)
           if (savedTeam) {
             await loadTeamDetails(savedTeam.id, savedTeam)
           }
