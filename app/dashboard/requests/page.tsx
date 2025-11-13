@@ -12,7 +12,7 @@ type JoinRequest = {
   created_at: string
 }
 
-function RequestsPageContent() {
+function RequestsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -39,12 +39,12 @@ function RequestsPageContent() {
 
       console.log('👤 User ID:', user.id)
 
-      // NOUVEAU : Essayer de récupérer le team_id depuis l'URL
+      // Récupérer le team_id depuis l'URL
       let teamIdToUse = searchParams.get('team_id')
       console.log('🔗 Team ID depuis URL:', teamIdToUse)
 
       if (!teamIdToUse) {
-        // Essayer localStorage
+        // Fallback localStorage
         teamIdToUse = localStorage.getItem('current_team_id')
         console.log('📦 Team ID depuis localStorage:', teamIdToUse)
       }
@@ -52,7 +52,6 @@ function RequestsPageContent() {
       if (!teamIdToUse) {
         console.log('⚠️ Pas de team_id, récupération depuis DB...')
         
-        // Fallback : récupérer depuis la base de données
         const { data: memberships } = await supabase
           .from('team_members')
           .select('team_id, role')
@@ -66,7 +65,6 @@ function RequestsPageContent() {
           return
         }
 
-        // Trouver un membership manager ou creator
         const managerMembership = memberships.find(m => m.role === 'manager' || m.role === 'creator')
 
         if (!managerMembership) {
@@ -79,13 +77,8 @@ function RequestsPageContent() {
         console.log('✅ Team ID récupéré depuis DB:', teamIdToUse)
       }
 
-      // À ce stade, teamIdToUse ne peut pas être null
-      if (!teamIdToUse) {
-        throw new Error('teamIdToUse is null')
-      }
-      const finalTeamId: string = teamIdToUse
+      const finalTeamId: string = teamIdToUse ?? ''
 
-      // Vérifier que l'utilisateur est bien manager de cette équipe
       const { data: membership } = await supabase
         .from('team_members')
         .select('role')
@@ -103,7 +96,6 @@ function RequestsPageContent() {
       console.log('✅ Rôle:', membership.role)
       setTeamId(finalTeamId)
 
-      // Récupérer les demandes en attente
       console.log('🔍 Recherche des demandes pour team:', finalTeamId)
       
       const { data: requestsData, error: requestsError } = await supabase
@@ -128,7 +120,6 @@ function RequestsPageContent() {
         return
       }
 
-      // Récupérer les profils des demandeurs
       const userIds = requestsData.map(r => r.user_id)
       console.log('👥 User IDs à rechercher:', userIds)
       
@@ -140,7 +131,6 @@ function RequestsPageContent() {
       console.log('👤 Profils trouvés:', profilesData?.length || 0)
       if (profilesError) console.error('⚠️ Erreur profils:', profilesError)
 
-      // Créer un map des profils pour un accès facile
       const profilesMap: Record<string, { name: string, email: string }> = {}
       profilesData?.forEach(p => {
         let displayName = 'Utilisateur'
@@ -160,7 +150,6 @@ function RequestsPageContent() {
 
       console.log('🗺️ Profiles map:', profilesMap)
 
-      // Formater les demandes avec les infos des profils
       const formattedRequests: JoinRequest[] = requestsData.map(r => ({
         id: r.id,
         user_id: r.user_id,
@@ -186,7 +175,6 @@ function RequestsPageContent() {
       setProcessing(requestId)
 
       if (action === 'accept') {
-        // Ajouter le membre à l'équipe
         const { error: memberError } = await supabase
           .from('team_members')
           .insert([{
@@ -198,7 +186,6 @@ function RequestsPageContent() {
         if (memberError) throw memberError
       }
 
-      // Mettre à jour le statut de la demande
       const { error: updateError } = await supabase
         .from('join_requests')
         .update({ status: action === 'accept' ? 'approved' : 'rejected' })
@@ -206,7 +193,6 @@ function RequestsPageContent() {
 
       if (updateError) throw updateError
 
-      // Créer une notification pour l'utilisateur
       const { error: notifError } = await supabase
         .from('notifications')
         .insert([{
@@ -224,7 +210,6 @@ function RequestsPageContent() {
 
       alert(action === 'accept' ? '✅ Membre ajouté !' : '❌ Demande refusée')
 
-      // Recharger les demandes
       await loadRequests()
 
     } catch (err) {
@@ -341,5 +326,17 @@ function RequestsPageContent() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function RequestsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+        <Loader className="text-white animate-spin" size={48} />
+      </div>
+    }>
+      <RequestsContent />
+    </Suspense>
   )
 }
