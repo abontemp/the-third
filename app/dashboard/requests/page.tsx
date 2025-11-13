@@ -201,7 +201,7 @@ function RequestsContent() {
 
       const { error: updateError } = await supabase
         .from('join_requests')
-        .update({ status: action === 'accept' ? 'approved' : 'rejected' })
+        .update({ status: action === 'accept' ? 'accepted' : 'rejected' })
         .eq('id', requestId)
 
       if (updateError) throw updateError
