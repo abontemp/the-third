@@ -41,8 +41,6 @@ export default function QuotesPage() {
         return
       }
 
-      console.log('✅ Utilisateur trouvé:', user.id)
-
       // Récupérer le team_id depuis localStorage (comme le dashboard)
       let teamId = localStorage.getItem('current_team_id')
       
@@ -79,7 +77,7 @@ export default function QuotesPage() {
           created_at,
           vote_id
         `)
-        .eq('team_id', membership.team_id)
+        .eq('team_id', teamId)
         .order('created_at', { ascending: false })
 
       if (quotesError) {
