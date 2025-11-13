@@ -1,7 +1,7 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { ArrowLeft, Loader, UserPlus, Check, X, Users } from 'lucide-react'
 
 type JoinRequest = {
@@ -12,7 +12,7 @@ type JoinRequest = {
   created_at: string
 }
 
-export default function RequestsPage() {
+function RequestsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -80,7 +80,10 @@ export default function RequestsPage() {
       }
 
       // À ce stade, teamIdToUse ne peut pas être null
-      const finalTeamId: string = teamIdToUse ?? ''
+      if (!teamIdToUse) {
+        throw new Error('teamIdToUse is null')
+      }
+      const finalTeamId: string = teamIdToUse
 
       // Vérifier que l'utilisateur est bien manager de cette équipe
       const { data: membership } = await supabase
