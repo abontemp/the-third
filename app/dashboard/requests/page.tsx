@@ -72,12 +72,18 @@ export default function RequestsPage() {
         console.log('✅ Team ID récupéré depuis DB:', teamIdToUse)
       }
 
+      // À ce stade, teamIdToUse ne peut pas être null
+      const finalTeamId: string = teamIdToUse ?? ''
+      if (!finalTeamId) {
+        throw new Error('teamIdToUse is null or empty')
+      }
+
       // Vérifier que l'utilisateur est bien manager de cette équipe
       const { data: membership } = await supabase
         .from('team_members')
         .select('role')
         .eq('user_id', user.id)
-        .eq('team_id', teamIdToUse)
+        .eq('team_id', finalTeamId)
         .single()
 
       if (!membership || !['manager', 'creator'].includes(membership.role)) {
@@ -86,17 +92,17 @@ export default function RequestsPage() {
         return
       }
 
-      console.log('✅ Team ID à utiliser:', teamIdToUse)
+      console.log('✅ Team ID à utiliser:', finalTeamId)
       console.log('✅ Rôle:', membership.role)
-      setTeamId(teamIdToUse)
+      setTeamId(finalTeamId)
 
       // Récupérer les demandes en attente
-      console.log('🔍 Recherche des demandes pour team:', teamIdToUse)
+      console.log('🔍 Recherche des demandes pour team:', finalTeamId)
       
       const { data: requestsData, error: requestsError } = await supabase
         .from('join_requests')
         .select('id, user_id, created_at')
-        .eq('team_id', teamIdToUse)
+        .eq('team_id', finalTeamId)
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
 
