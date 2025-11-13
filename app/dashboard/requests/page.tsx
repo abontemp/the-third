@@ -1,6 +1,6 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Loader, UserPlus, Check, X, Users } from 'lucide-react'
 
@@ -14,6 +14,7 @@ type JoinRequest = {
 
 export default function RequestsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
@@ -38,12 +39,18 @@ export default function RequestsPage() {
 
       console.log('👤 User ID:', user.id)
 
-      // Essayer de récupérer le team_id depuis localStorage d'abord
-      let teamIdToUse = localStorage.getItem('current_team_id')
-      console.log('📦 Team ID depuis localStorage:', teamIdToUse)
+      // NOUVEAU : Essayer de récupérer le team_id depuis l'URL
+      let teamIdToUse = searchParams.get('team_id')
+      console.log('🔗 Team ID depuis URL:', teamIdToUse)
 
       if (!teamIdToUse) {
-        console.log('⚠️ Pas de team_id dans localStorage, récupération depuis DB...')
+        // Essayer localStorage
+        teamIdToUse = localStorage.getItem('current_team_id')
+        console.log('📦 Team ID depuis localStorage:', teamIdToUse)
+      }
+
+      if (!teamIdToUse) {
+        console.log('⚠️ Pas de team_id, récupération depuis DB...')
         
         // Fallback : récupérer depuis la base de données
         const { data: memberships } = await supabase
@@ -74,9 +81,6 @@ export default function RequestsPage() {
 
       // À ce stade, teamIdToUse ne peut pas être null
       const finalTeamId: string = teamIdToUse ?? ''
-      if (!finalTeamId) {
-        throw new Error('teamIdToUse is null or empty')
-      }
 
       // Vérifier que l'utilisateur est bien manager de cette équipe
       const { data: membership } = await supabase
