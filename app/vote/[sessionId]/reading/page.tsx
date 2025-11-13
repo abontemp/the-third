@@ -273,7 +273,7 @@ export default function ReadingPage() {
 
       // Vérifier si la citation existe déjà
       const { data: existing } = await supabase
-        .from('saved_quotes')
+.from('memorable_quotes')
         .select('id')
         .eq('vote_id', voteId)
         .eq('vote_type', type === 'best_action' || type === 'worst_action' ? type : type)
@@ -304,7 +304,7 @@ export default function ReadingPage() {
 
       // Sauvegarder la citation
       const { error } = await supabase
-        .from('saved_quotes')
+.from('memorable_quotes')
         .insert([{
           team_id: teamId,
           vote_id: voteId,
