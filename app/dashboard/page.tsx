@@ -576,7 +576,7 @@ export default function DashboardPage() {
               {/* Badge des demandes en attente */}
               {isManager && pendingRequestsCount > 0 && (
                 <button
-                  onClick={() => router.push('/dashboard/requests')}
+onClick={() => router.push(`/dashboard/requests?team_id=${selectedTeam.id}`)}
                   className="relative bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 animate-pulse"
                 >
                   <UserPlus size={20} />
