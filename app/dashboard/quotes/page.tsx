@@ -59,28 +59,18 @@ export default function QuotesPage() {
 
       // Récupérer les citations sauvegardées
       const { data: quotesData, error: quotesError } = await supabase
-        .from('saved_quotes')
+        .from('memorable_quotes')
         .select(`
           id,
           comment,
           vote_type,
           voter_id,
           player_id,
-          saved_at,
-          votes (
-            voting_sessions (
-              matches (
-                opponent,
-                match_date,
-                seasons (
-                  name
-                )
-              )
-            )
-          )
+          created_at,
+          vote_id
         `)
         .eq('team_id', membership.team_id)
-        .order('saved_at', { ascending: false })
+        .order('created_at', { ascending: false })
 
       if (quotesError) {
         console.error('⚠️ Erreur quotes:', quotesError)
@@ -95,6 +85,73 @@ export default function QuotesPage() {
         setLoading(false)
         return
       }
+
+      // Récupérer les vote_ids pour obtenir les infos de match
+      const voteIds = quotesData.map(q => q.vote_id).filter(Boolean)
+      
+      const { data: votesData } = await supabase
+        .from('votes')
+        .select(`
+          id,
+          session_id
+        `)
+        .in('id', voteIds)
+
+      const votesMap: Record<string, string> = {}
+      votesData?.forEach(v => {
+        votesMap[v.id] = v.session_id
+      })
+
+      // Récupérer les sessions pour obtenir les matchs
+      const sessionIds = Object.values(votesMap).filter(Boolean)
+      
+      const { data: sessionsData } = await supabase
+        .from('voting_sessions')
+        .select(`
+          id,
+          match_id
+        `)
+        .in('id', sessionIds)
+
+      const sessionsMap: Record<string, string> = {}
+      sessionsData?.forEach(s => {
+        sessionsMap[s.id] = s.match_id
+      })
+
+      // Récupérer les matchs
+      const matchIds = Object.values(sessionsMap).filter(Boolean)
+      
+      const { data: matchesData } = await supabase
+        .from('matches')
+        .select(`
+          id,
+          opponent,
+          match_date,
+          season_id
+        `)
+        .in('id', matchIds)
+
+      const matchesMap: Record<string, { opponent: string, match_date: string, season_id: string }> = {}
+      matchesData?.forEach(m => {
+        matchesMap[m.id] = {
+          opponent: m.opponent,
+          match_date: m.match_date,
+          season_id: m.season_id
+        }
+      })
+
+      // Récupérer les saisons
+      const seasonIds = [...new Set(matchesData?.map(m => m.season_id).filter(Boolean) || [])]
+      
+      const { data: seasonsData } = await supabase
+        .from('seasons')
+        .select('id, name')
+        .in('id', seasonIds)
+
+      const seasonsMap: Record<string, string> = {}
+      seasonsData?.forEach(s => {
+        seasonsMap[s.id] = s.name
+      })
 
       // Récupérer les profils pour les noms
       const userIds = new Set<string>()
@@ -117,34 +174,24 @@ export default function QuotesPage() {
       })
 
       // Formater les citations
-      const formattedQuotes = quotesData
-        .filter(q => {
-          if (filter === 'all') return true
-          return q.vote_type === filter
-        })
-        .map(q => {
-          // Gérer la structure imbriquée avec any pour éviter les erreurs TypeScript
-          const voteData: any = Array.isArray(q.votes) ? q.votes[0] : q.votes
-          const sessionData: any = voteData?.voting_sessions
-          const matchData: any = Array.isArray(sessionData?.matches) 
-            ? sessionData.matches[0] 
-            : sessionData?.matches
-          const seasonData: any = Array.isArray(matchData?.seasons)
-            ? matchData.seasons[0]
-            : matchData?.seasons
+      const formattedQuotes = quotesData.map(q => {
+        const sessionId = votesMap[q.vote_id]
+        const matchId = sessionsMap[sessionId]
+        const matchInfo = matchesMap[matchId]
+        const seasonName = matchInfo?.season_id ? seasonsMap[matchInfo.season_id] : undefined
 
-          return {
-            id: q.id,
-            comment: q.comment,
-            vote_type: q.vote_type as 'top' | 'flop',
-            voter_name: profilesMap[q.voter_id] || 'Inconnu',
-            player_name: profilesMap[q.player_id] || 'Inconnu',
-            match_opponent: matchData?.opponent || 'Match inconnu',
-            match_date: matchData?.match_date || '',
-            saved_at: q.saved_at,
-            season_name: seasonData?.name
-          }
-        })
+        return {
+          id: q.id,
+          comment: q.comment,
+          vote_type: q.vote_type as 'top' | 'flop',
+          voter_name: profilesMap[q.voter_id] || 'Inconnu',
+          player_name: profilesMap[q.player_id] || 'Inconnu',
+          match_opponent: matchInfo?.opponent || 'Match inconnu',
+          match_date: matchInfo?.match_date || '',
+          saved_at: q.created_at,
+          season_name: seasonName
+        }
+      })
 
       setQuotes(formattedQuotes)
 
@@ -274,8 +321,12 @@ export default function QuotesPage() {
                       <span className="text-white font-semibold">{quote.player_name}</span>
                       <span>•</span>
                       <span>{quote.match_opponent}</span>
-                      <span>•</span>
-                      <span>{new Date(quote.match_date).toLocaleDateString('fr-FR')}</span>
+                      {quote.match_date && (
+                        <>
+                          <span>•</span>
+                          <span>{new Date(quote.match_date).toLocaleDateString('fr-FR')}</span>
+                        </>
+                      )}
                       {quote.season_name && (
                         <>
                           <span>•</span>
