@@ -38,31 +38,56 @@ export default function RequestsPage() {
 
       console.log('👤 User ID:', user.id)
 
-      // Récupérer TOUTES les équipes de l'utilisateur comme fallback
-      const { data: memberships } = await supabase
+      // Essayer de récupérer le team_id depuis localStorage d'abord
+      let teamIdToUse = localStorage.getItem('current_team_id')
+      console.log('📦 Team ID depuis localStorage:', teamIdToUse)
+
+      if (!teamIdToUse) {
+        console.log('⚠️ Pas de team_id dans localStorage, récupération depuis DB...')
+        
+        // Fallback : récupérer depuis la base de données
+        const { data: memberships } = await supabase
+          .from('team_members')
+          .select('team_id, role')
+          .eq('user_id', user.id)
+
+        console.log('📋 Memberships trouvés:', memberships)
+
+        if (!memberships || memberships.length === 0) {
+          alert('Vous n\'êtes membre d\'aucune équipe')
+          router.push('/dashboard')
+          return
+        }
+
+        // Trouver un membership manager ou creator
+        const managerMembership = memberships.find(m => m.role === 'manager' || m.role === 'creator')
+
+        if (!managerMembership) {
+          alert('Vous devez être manager pour accéder à cette page')
+          router.push('/dashboard')
+          return
+        }
+
+        teamIdToUse = managerMembership.team_id
+        console.log('✅ Team ID récupéré depuis DB:', teamIdToUse)
+      }
+
+      // Vérifier que l'utilisateur est bien manager de cette équipe
+      const { data: membership } = await supabase
         .from('team_members')
-        .select('team_id, role')
+        .select('role')
         .eq('user_id', user.id)
+        .eq('team_id', teamIdToUse)
+        .single()
 
-      console.log('📋 Memberships trouvés:', memberships)
-
-      if (!memberships || memberships.length === 0) {
-        alert('Vous n\'êtes membre d\'aucune équipe')
+      if (!membership || !['manager', 'creator'].includes(membership.role)) {
+        alert('Vous devez être manager de cette équipe')
         router.push('/dashboard')
         return
       }
 
-      // Trouver un membership manager ou creator
-      const managerMembership = memberships.find(m => m.role === 'manager' || m.role === 'creator')
-
-      if (!managerMembership) {
-        alert('Vous devez être manager pour accéder à cette page')
-        router.push('/dashboard')
-        return
-      }
-
-      const teamIdToUse = managerMembership.team_id
       console.log('✅ Team ID à utiliser:', teamIdToUse)
+      console.log('✅ Rôle:', membership.role)
       setTeamId(teamIdToUse)
 
       // Récupérer les demandes en attente
