@@ -175,15 +175,28 @@ function RequestsContent() {
       setProcessing(requestId)
 
       if (action === 'accept') {
-        const { error: memberError } = await supabase
+        // Vérifier si l'utilisateur est déjà membre
+        const { data: existingMember } = await supabase
           .from('team_members')
-          .insert([{
-            team_id: teamId,
-            user_id: userId,
-            role: 'member'
-          }])
+          .select('id')
+          .eq('team_id', teamId)
+          .eq('user_id', userId)
+          .single()
 
-        if (memberError) throw memberError
+        if (existingMember) {
+          console.log('⚠️ Utilisateur déjà membre, on passe juste au statut approved')
+        } else {
+          // Ajouter le membre seulement s'il n'existe pas
+          const { error: memberError } = await supabase
+            .from('team_members')
+            .insert([{
+              team_id: teamId,
+              user_id: userId,
+              role: 'member'
+            }])
+
+          if (memberError) throw memberError
+        }
       }
 
       const { error: updateError } = await supabase
