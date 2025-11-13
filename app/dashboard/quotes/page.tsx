@@ -79,7 +79,7 @@ export default function QuotesPage() {
           created_at,
           vote_id
         `)
-        .eq('team_id', teamId)
+        .eq('team_id', membership.team_id)
         .order('created_at', { ascending: false })
 
       if (quotesError) {
