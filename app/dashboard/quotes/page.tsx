@@ -43,19 +43,29 @@ export default function QuotesPage() {
 
       console.log('✅ Utilisateur trouvé:', user.id)
 
-      const { data: membership, error: membershipError } = await supabase
-        .from('team_members')
-        .select('team_id')
-        .eq('user_id', user.id)
-        .single()
+      // Récupérer le team_id depuis localStorage (comme le dashboard)
+      let teamId = localStorage.getItem('current_team_id')
+      
+      if (!teamId) {
+        console.log('⚠️ Pas de team_id dans localStorage, récupération de la première équipe')
+        
+        // Fallback : prendre la première équipe
+        const { data: memberships, error: membershipError } = await supabase
+          .from('team_members')
+          .select('team_id')
+          .eq('user_id', user.id)
+          .limit(1)
 
-      if (membershipError || !membership) {
-        console.error('⚠️ Erreur membership:', membershipError)
-        setLoading(false)
-        return
+        if (membershipError || !memberships || memberships.length === 0) {
+          console.error('⚠️ Erreur membership:', membershipError)
+          setLoading(false)
+          return
+        }
+
+        teamId = memberships[0].team_id
       }
 
-      console.log('✅ Équipe trouvée:', membership.team_id)
+      console.log('✅ Équipe trouvée:', teamId)
 
       // Récupérer les citations sauvegardées
       const { data: quotesData, error: quotesError } = await supabase
@@ -69,7 +79,7 @@ export default function QuotesPage() {
           created_at,
           vote_id
         `)
-        .eq('team_id', membership.team_id)
+        .eq('team_id', teamId)
         .order('created_at', { ascending: false })
 
       if (quotesError) {
