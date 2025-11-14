@@ -73,6 +73,15 @@ export default function ReadingPage() {
         return
       }
 
+      // Récupérer le team_id depuis localStorage (priorité)
+      const savedTeamId = localStorage.getItem('current_team_id')
+      if (savedTeamId) {
+        setTeamId(savedTeamId)
+        console.log('✅ Team ID depuis localStorage:', savedTeamId)
+      } else {
+        console.warn('⚠️ Pas de team_id dans localStorage')
+      }
+
       // Récupérer la session
       const { data: sessionData } = await supabase
         .from('voting_sessions')
@@ -99,18 +108,20 @@ export default function ReadingPage() {
 
       const matchData = Array.isArray(sessionData.matches) ? sessionData.matches[0] : sessionData.matches
 
-      // Récupérer le team_id depuis la saison
-      const { data: seasonData } = await supabase
-        .from('seasons')
-        .select('team_id')
-        .eq('id', matchData?.season_id)
-        .single()
+      // Si pas de team_id dans localStorage, fallback sur la saison
+      if (!savedTeamId) {
+        const { data: seasonData } = await supabase
+          .from('seasons')
+          .select('team_id')
+          .eq('id', matchData?.season_id)
+          .single()
 
-      if (seasonData?.team_id) {
-        setTeamId(seasonData.team_id)
-        console.log('✅ Team ID récupéré:', seasonData.team_id)
-      } else {
-        console.error('❌ Impossible de récupérer le team_id')
+        if (seasonData?.team_id) {
+          setTeamId(seasonData.team_id)
+          console.log('✅ Team ID récupéré depuis saison (fallback):', seasonData.team_id)
+        } else {
+          console.error('❌ Impossible de récupérer le team_id')
+        }
       }
 
       // Vérifier si l'utilisateur est manager
