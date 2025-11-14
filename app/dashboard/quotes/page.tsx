@@ -1,8 +1,8 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader, Quote, TrendingUp, TrendingDown } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
 
 type SavedQuote = {
   id: string
@@ -16,8 +16,9 @@ type SavedQuote = {
   season_name?: string
 }
 
-export default function QuotesPage() {
+function QuotesContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   
   const [loading, setLoading] = useState(true)
@@ -41,13 +42,21 @@ export default function QuotesPage() {
         return
       }
 
-      // Récupérer le team_id depuis localStorage (comme le dashboard)
-      let teamId = localStorage.getItem('current_team_id')
-      
+      console.log('✅ Utilisateur trouvé:', user.id)
+
+      // Récupérer le team_id depuis l'URL
+      let teamId = searchParams.get('team_id')
+      console.log('🔗 Team ID depuis URL:', teamId)
+
       if (!teamId) {
-        console.log('⚠️ Pas de team_id dans localStorage, récupération de la première équipe')
+        // Fallback localStorage
+        teamId = localStorage.getItem('current_team_id')
+        console.log('📦 Team ID depuis localStorage:', teamId)
+      }
+
+      if (!teamId) {
+        console.log('⚠️ Pas de team_id, récupération de la première équipe')
         
-        // Fallback : prendre la première équipe
         const { data: memberships, error: membershipError } = await supabase
           .from('team_members')
           .select('team_id')
@@ -74,8 +83,8 @@ export default function QuotesPage() {
           vote_type,
           voter_id,
           player_id,
-          created_at,
-          vote_id
+          vote_id,
+          created_at
         `)
         .eq('team_id', teamId)
         .order('created_at', { ascending: false })
@@ -350,5 +359,17 @@ export default function QuotesPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function QuotesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+        <Loader className="text-white animate-spin" size={48} />
+      </div>
+    }>
+      <QuotesContent />
+    </Suspense>
   )
 }
