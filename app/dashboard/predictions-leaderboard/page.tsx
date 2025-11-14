@@ -40,12 +40,22 @@ export default function PredictionsLeaderboardPage() {
       }
       console.log('✅ Utilisateur trouvé:', user.id)
 
+      // Récupérer l'équipe sélectionnée depuis le localStorage
+      const selectedTeamId = localStorage.getItem('selectedTeamId')
+      
+      if (!selectedTeamId) {
+        console.log('❌ Pas d\'équipe sélectionnée')
+        router.push('/dashboard')
+        return
+      }
+
       // Récupérer mon équipe
       const { data: membership } = await supabase
         .from('team_members')
         .select('team_id')
         .eq('user_id', user.id)
-        .single()
+        .eq('team_id', selectedTeamId)
+        .maybeSingle()
 
       if (!membership) {
         console.log('❌ Pas de membership trouvé')

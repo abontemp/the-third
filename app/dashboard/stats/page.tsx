@@ -39,11 +39,23 @@ export default function StatsPage() {
       }
       console.log('✅ Utilisateur trouvé:', user.id)
 
-      // Récupérer mon équipe
+      // Récupérer l'équipe sélectionnée depuis le localStorage
+      const selectedTeamId = localStorage.getItem('selectedTeamId')
+      
+      if (!selectedTeamId) {
+        console.log('❌ Pas d\'équipe sélectionnée dans le localStorage')
+        router.push('/dashboard')
+        return
+      }
+      
+      console.log('✅ Équipe sélectionnée:', selectedTeamId)
+
+      // Vérifier que l'utilisateur est bien membre de cette équipe
       const { data: membership, error: membershipError } = await supabase
         .from('team_members')
         .select('team_id')
         .eq('user_id', user.id)
+        .eq('team_id', selectedTeamId)
         .maybeSingle()
 
       if (membershipError) {
@@ -51,11 +63,11 @@ export default function StatsPage() {
       }
 
       if (!membership) {
-        console.log('❌ Pas de membership trouvé')
-        setLoading(false)
+        console.log('❌ Vous n\'êtes pas membre de cette équipe')
+        router.push('/dashboard')
         return
       }
-      console.log('✅ Équipe trouvée:', membership.team_id)
+      console.log('✅ Membership confirmé pour l\'équipe:', membership.team_id)
 
       // Récupérer toutes les saisons de l'équipe
       const { data: seasons, error: seasonsError } = await supabase

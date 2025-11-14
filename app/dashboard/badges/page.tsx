@@ -124,12 +124,22 @@ export default function BadgesPage() {
                            : 'Vous')
       setUserName(displayName)
 
+      // Récupérer l'équipe sélectionnée depuis le localStorage
+      const selectedTeamId = localStorage.getItem('selectedTeamId')
+      
+      if (!selectedTeamId) {
+        console.log('❌ Pas d\'équipe sélectionnée')
+        router.push('/dashboard')
+        return
+      }
+
       // Récupérer l'équipe de l'utilisateur
       const { data: membership } = await supabase
         .from('team_members')
         .select('team_id, role')
         .eq('user_id', user.id)
-        .single()
+        .eq('team_id', selectedTeamId)
+        .maybeSingle()
 
       if (!membership) {
         console.log('❌ Pas de membership')
