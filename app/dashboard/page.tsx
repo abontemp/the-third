@@ -157,62 +157,80 @@ export default function DashboardPage() {
     try {
       console.log('🔍 Chargement des données pour l\'équipe:', selectedTeam.id)
       
-      // Charger tous les matchs de l'équipe
-      const { data: matches, error: matchesError } = await supabase
-        .from('matches')
-        .select('id, opponent, match_date, location, team_id')
+      // D'abord, récupérer toutes les saisons de cette équipe
+      const { data: seasons, error: seasonsError } = await supabase
+        .from('seasons')
+        .select('id')
         .eq('team_id', selectedTeam.id)
-        .order('match_date', { ascending: false })
 
-      console.log('Matches trouvés:', matches)
-      console.log('Matches error:', matchesError)
+      console.log('Saisons trouvées:', seasons)
+      console.log('Saisons error:', seasonsError)
 
-      if (!matches || matches.length === 0) {
-        console.log('Aucun match trouvé')
+      if (!seasons || seasons.length === 0) {
+        console.log('Aucune saison trouvée')
         setActiveSessions([])
       } else {
-        // Récupérer toutes les sessions pour ces matchs
-        const matchIds = matches.map(m => m.id)
-        const { data: votingSessions, error: sessionsError } = await supabase
-          .from('voting_sessions')
-          .select('id, match_id, status')
-          .in('match_id', matchIds)
-          .neq('status', 'completed')
+        const seasonIds = seasons.map(s => s.id)
+        
+        // Charger tous les matchs de ces saisons
+        const { data: matches, error: matchesError } = await supabase
+          .from('matches')
+          .select('id, opponent, match_date, location, season_id')
+          .in('season_id', seasonIds)
+          .order('match_date', { ascending: false })
 
-        console.log('Sessions de vote trouvées:', votingSessions)
-        console.log('Sessions error:', sessionsError)
+        console.log('Matches trouvés:', matches)
+        console.log('Matches error:', matchesError)
 
-        if (!votingSessions || votingSessions.length === 0) {
-          console.log('Aucune session active')
+        if (!matches || matches.length === 0) {
+          console.log('Aucun match trouvé')
           setActiveSessions([])
         } else {
-          // Créer une map des matchs
-          const matchesMap: Record<string, any> = {}
-          matches.forEach(m => {
-            matchesMap[m.id] = m
-          })
+          // Récupérer toutes les sessions pour ces matchs
+          const matchIds = matches.map(m => m.id)
+          const { data: votingSessions, error: sessionsError } = await supabase
+            .from('voting_sessions')
+            .select('id, match_id, status')
+            .in('match_id', matchIds)
+            .neq('status', 'completed')
 
-          // Combiner les données
-          const sessions: VotingSession[] = votingSessions.map((session: any) => {
-            const match = matchesMap[session.match_id]
-            return {
-              id: session.id,
-              match_id: session.match_id,
-              status: session.status,
-              matches: {
-                opponent: match?.opponent || 'Inconnu',
-                match_date: match?.match_date || new Date().toISOString(),
-                location: match?.location || null
+          console.log('Sessions de vote trouvées:', votingSessions)
+          console.log('Sessions error:', sessionsError)
+
+          if (!votingSessions || votingSessions.length === 0) {
+            console.log('Aucune session active')
+            setActiveSessions([])
+          } else {
+            // Créer une map des matchs
+            const matchesMap: Record<string, any> = {}
+            matches.forEach(m => {
+              matchesMap[m.id] = m
+            })
+
+            // Combiner les données
+            const sessions: VotingSession[] = votingSessions.map((session: any) => {
+              const match = matchesMap[session.match_id]
+              return {
+                id: session.id,
+                match_id: session.match_id,
+                status: session.status,
+                matches: {
+                  opponent: match?.opponent || 'Inconnu',
+                  match_date: match?.match_date || new Date().toISOString(),
+                  location: match?.location || null
+                }
               }
-            }
-          })
+            })
 
-          console.log('Sessions finales:', sessions)
-          setActiveSessions(sessions)
+            console.log('Sessions finales:', sessions)
+            setActiveSessions(sessions)
+          }
         }
       }
 
       // Charger les membres
+      console.log('🔍 Chargement des membres pour team_id:', selectedTeam.id)
+      
       const { data: teamMembers, error: membersError } = await supabase
         .from('team_members')
         .select('id, user_id, role')
@@ -220,22 +238,28 @@ export default function DashboardPage() {
         .order('role', { ascending: true })
 
       console.log('Team members raw:', teamMembers)
+      console.log('Team members count:', teamMembers?.length)
       console.log('Members error:', membersError)
 
       if (!teamMembers || teamMembers.length === 0) {
-        console.log('No team members found')
+        console.log('❌ No team members found')
         setMembers([])
         return
       }
 
+      console.log('✅ Found', teamMembers.length, 'team members')
+
       // Récupérer les profils séparément
       const userIds = teamMembers.map((m: any) => m.user_id)
+      console.log('User IDs to fetch:', userIds)
+      
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, nickname, email, avatar_url')
         .in('id', userIds)
 
       console.log('Profiles:', profiles)
+      console.log('Profiles count:', profiles?.length)
       console.log('Profiles error:', profilesError)
 
       // Créer une map des profils
@@ -247,7 +271,7 @@ export default function DashboardPage() {
       // Combiner les données
       const membersData = teamMembers.map((m: any) => {
         const profile = profilesMap[m.user_id]
-        return {
+        const member = {
           id: m.id,
           user_id: m.user_id,
           role: m.role,
@@ -257,8 +281,11 @@ export default function DashboardPage() {
           email: profile?.email || null,
           avatar_url: profile?.avatar_url || null
         }
+        console.log('Member combined:', member)
+        return member
       })
 
+      console.log('✅ Final members data count:', membersData.length)
       console.log('Final members data:', membersData)
       setMembers(membersData)
 
