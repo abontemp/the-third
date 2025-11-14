@@ -1,5 +1,4 @@
 'use client'
-
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -22,7 +21,6 @@ export default function HistoryPage() {
 
   const [loading, setLoading] = useState(true)
   const [sessions, setSessions] = useState<VotingSession[]>([])
-  const [selectedTeam, setSelectedTeam] = useState<string | null>(null)
 
   useEffect(() => {
     loadHistory()
@@ -31,6 +29,7 @@ export default function HistoryPage() {
   const loadHistory = async () => {
     try {
       setLoading(true)
+      console.log('🔍 Chargement de l\'historique...')
       
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
@@ -38,37 +37,39 @@ export default function HistoryPage() {
         return
       }
 
-      // Récupérer les équipes de l'utilisateur
-      const { data: memberships } = await supabase
-        .from('team_members')
-        .select('team_id, role')
-        .eq('user_id', user.id)
-
-      if (!memberships || memberships.length === 0) {
-        return
-      }
-
-      // Vérifier si manager d'au moins une équipe
-      const managerTeams = memberships.filter(m => 
-        m.role === 'manager' || m.role === 'creator'
-      )
-
-      if (managerTeams.length === 0) {
+      // Récupérer l'équipe sélectionnée depuis le localStorage
+      const selectedTeamId = localStorage.getItem('selectedTeamId')
+      
+      if (!selectedTeamId) {
+        console.log('❌ Pas d\'équipe sélectionnée')
         router.push('/dashboard')
         return
       }
 
-      // Utiliser la première équipe pour l'instant
-      const teamId = managerTeams[0].team_id
-      setSelectedTeam(teamId)
+      console.log('✅ Équipe sélectionnée:', selectedTeamId)
+
+      // Vérifier que l'utilisateur est membre de cette équipe
+      const { data: membership } = await supabase
+        .from('team_members')
+        .select('team_id, role')
+        .eq('user_id', user.id)
+        .eq('team_id', selectedTeamId)
+        .maybeSingle()
+
+      if (!membership) {
+        console.log('❌ Vous n\'êtes pas membre de cette équipe')
+        router.push('/dashboard')
+        return
+      }
 
       // Charger les saisons de l'équipe
       const { data: seasons } = await supabase
         .from('seasons')
         .select('id')
-        .eq('team_id', teamId)
+        .eq('team_id', selectedTeamId)
 
       const seasonIds = seasons?.map(s => s.id) || []
+      console.log(`✅ ${seasonIds.length} saisons trouvées`)
 
       if (seasonIds.length === 0) {
         setLoading(false)
@@ -78,34 +79,34 @@ export default function HistoryPage() {
       // Charger les matchs
       const { data: matches } = await supabase
         .from('matches')
-        .select('id')
+        .select('id, opponent, match_date, season_id')
         .in('season_id', seasonIds)
 
       const matchIds = matches?.map(m => m.id) || []
+      console.log(`✅ ${matchIds.length} matchs trouvés`)
 
       if (matchIds.length === 0) {
         setLoading(false)
         return
       }
 
-      // Charger toutes les sessions de vote (fermées uniquement)
+      // Créer une map des matchs pour référence rapide
+      const matchesMap: Record<string, any> = {}
+      matches?.forEach(m => {
+        matchesMap[m.id] = m
+      })
+
+      // Charger toutes les sessions de vote terminées (status = 'completed')
       const { data: sessionsData } = await supabase
         .from('voting_sessions')
-        .select(`
-          id,
-          status,
-          created_at,
-          match_id,
-          matches (
-            opponent,
-            match_date
-          )
-        `)
+        .select('id, status, created_at, match_id')
         .in('match_id', matchIds)
-        .eq('status', 'closed')
+        .eq('status', 'completed')
         .order('created_at', { ascending: false })
 
-      if (!sessionsData) {
+      console.log(`✅ ${sessionsData?.length || 0} sessions terminées trouvées`)
+
+      if (!sessionsData || sessionsData.length === 0) {
         setLoading(false)
         return
       }
@@ -118,17 +119,15 @@ export default function HistoryPage() {
             .select('*', { count: 'exact', head: true })
             .eq('session_id', session.id)
 
-          const match = Array.isArray(session.matches)
-            ? session.matches[0]
-            : session.matches
+          const match = matchesMap[session.match_id]
 
           return {
             id: session.id,
             status: session.status,
             created_at: session.created_at,
             match: {
-              opponent: match?.opponent || '',
-              match_date: match?.match_date || ''
+              opponent: match?.opponent || 'Adversaire inconnu',
+              match_date: match?.match_date || new Date().toISOString()
             },
             vote_count: count || 0
           }
@@ -136,9 +135,10 @@ export default function HistoryPage() {
       )
 
       setSessions(sessionsWithCounts)
+      console.log('✅ Historique chargé avec succès')
 
     } catch (error) {
-      console.error('Erreur:', error)
+      console.error('❌ Erreur:', error)
     } finally {
       setLoading(false)
     }
@@ -146,14 +146,14 @@ export default function HistoryPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <Loader className="text-white animate-spin" size={48} />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -166,7 +166,7 @@ export default function HistoryPage() {
             </button>
 
             <div>
-              <h1 className="text-xl font-bold text-white">Historique des votes</h1>
+              <h1 className="text-xl font-bold text-white">📜 Historique des votes</h1>
             </div>
           </div>
         </div>
@@ -193,7 +193,7 @@ export default function HistoryPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <h3 className="text-xl font-bold text-white mb-2">
-                      {session.match.opponent}
+                      vs {session.match.opponent}
                     </h3>
                     <div className="flex items-center gap-4 text-sm text-gray-400">
                       <span className="flex items-center gap-1">
@@ -206,22 +206,13 @@ export default function HistoryPage() {
                         })}
                       </span>
                       <span>•</span>
-                      <span>{session.vote_count} votes</span>
+                      <span>{session.vote_count} vote{session.vote_count > 1 ? 's' : ''}</span>
                       <span>•</span>
-                      <span className="text-green-400">Terminé</span>
+                      <span className="text-green-400">✓ Terminé</span>
                     </div>
                   </div>
 
                   <div className="flex gap-3">
-                    <button
-                      onClick={() => router.push(`/vote/${session.id}/reading`)}
-                      className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition"
-                      title="Revoir la lecture des votes"
-                    >
-                      <Eye size={18} />
-                      <span className="hidden sm:inline">Revoir les votes</span>
-                    </button>
-
                     <button
                       onClick={() => router.push(`/vote/${session.id}/results`)}
                       className="flex items-center gap-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white px-4 py-2 rounded-lg transition"
@@ -229,6 +220,15 @@ export default function HistoryPage() {
                     >
                       <Trophy size={18} />
                       <span className="hidden sm:inline">Podium</span>
+                    </button>
+
+                    <button
+                      onClick={() => router.push(`/vote/${session.id}/reading`)}
+                      className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition"
+                      title="Revoir la lecture des votes"
+                    >
+                      <Eye size={18} />
+                      <span className="hidden sm:inline">Revoir les votes</span>
                     </button>
                   </div>
                 </div>
