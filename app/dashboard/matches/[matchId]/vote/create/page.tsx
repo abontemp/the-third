@@ -77,8 +77,9 @@ export default function CreateVotePage() {
         match_date: matchData.match_date
       })
 
-      // Récupérer le team_id depuis la saison
-      const teamId = matchData.seasons?.team_id
+      // Récupérer le team_id depuis la saison (peut être un objet ou un tableau selon Supabase)
+      const seasonsData = matchData.seasons as any
+      const teamId = Array.isArray(seasonsData) ? seasonsData[0]?.team_id : seasonsData?.team_id
 
       console.log('🏀 Team ID:', teamId)
 
