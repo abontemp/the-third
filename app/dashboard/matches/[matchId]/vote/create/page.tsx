@@ -49,16 +49,10 @@ export default function CreateVotePage() {
 
       console.log('🔍 Chargement du match:', matchId)
 
-      // Charger le match avec la saison
+      // Charger le match
       const { data: matchData, error: matchError } = await supabase
         .from('matches')
-        .select(`
-          id, 
-          opponent, 
-          match_date, 
-          season_id,
-          seasons!inner(team_id)
-        `)
+        .select('id, opponent, match_date, season_id')
         .eq('id', matchId)
         .single()
 
@@ -77,17 +71,25 @@ export default function CreateVotePage() {
         match_date: matchData.match_date
       })
 
-      // Récupérer le team_id depuis la saison (peut être un objet ou un tableau selon Supabase)
-      const seasonsData = matchData.seasons as any
-      const teamId = Array.isArray(seasonsData) ? seasonsData[0]?.team_id : seasonsData?.team_id
+      // Charger la saison pour obtenir le team_id
+      const { data: seasonData, error: seasonError } = await supabase
+        .from('seasons')
+        .select('team_id')
+        .eq('id', matchData.season_id)
+        .single()
 
-      console.log('🏀 Team ID:', teamId)
+      console.log('🏀 Season data:', seasonData)
 
-      if (!teamId) {
+      if (seasonError || !seasonData) {
         setError("Impossible de trouver l'équipe")
+        console.error('Erreur saison:', seasonError)
         setLoading(false)
         return
       }
+
+      const teamId = seasonData.team_id
+
+      console.log('🏀 Team ID:', teamId)
 
       // Vérifier que l'utilisateur est manager
       const { data: memberData } = await supabase
