@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Send, AlertCircle, CheckCircle, Loader } from 'lucide-react'
+import { ArrowLeft, Users, Send, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 
 type TeamMember = {
   id: string
@@ -35,7 +35,7 @@ export default function CreateVotePage() {
 
   useEffect(() => {
     loadData()
-  }, [matchId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [matchId])
 
   const loadData = async () => {
     try {
@@ -52,12 +52,17 @@ export default function CreateVotePage() {
       // Charger le match avec la saison
       const { data: matchData, error: matchError } = await supabase
         .from('matches')
-        .select('id, opponent, match_date, season_id, seasons(team_id)')
+        .select(`
+          id, 
+          opponent, 
+          match_date, 
+          season_id,
+          seasons!inner(team_id)
+        `)
         .eq('id', matchId)
         .single()
 
       console.log('📋 Match data:', matchData)
-      console.log('❌ Match error:', matchError)
 
       if (matchError || !matchData) {
         setError("Match introuvable")
@@ -72,9 +77,8 @@ export default function CreateVotePage() {
         match_date: matchData.match_date
       })
 
-      // Récupérer le team_id
-      const seasonData = Array.isArray(matchData.seasons) ? matchData.seasons[0] : matchData.seasons
-      const teamId = seasonData?.team_id
+      // Récupérer le team_id depuis la saison
+      const teamId = matchData.seasons?.team_id
 
       console.log('🏀 Team ID:', teamId)
 
@@ -100,14 +104,14 @@ export default function CreateVotePage() {
         return
       }
 
-      // Charger tous les membres de l'équipe SANS la relation profiles
+      // 🎯 CORRECTION : Charger TOUS les membres de l'équipe
       const { data: membersData, error: membersError } = await supabase
         .from('team_members')
         .select('id, user_id, role')
         .eq('team_id', teamId)
 
       console.log('👥 Members data:', membersData)
-      console.log('❌ Members error:', membersError)
+      console.log('👥 Nombre de membres:', membersData?.length)
 
       if (membersError) {
         console.error('Erreur membres:', membersError)
@@ -122,16 +126,18 @@ export default function CreateVotePage() {
         return
       }
 
-      // Charger les profils séparément
+      // Charger les profils de TOUS les membres
       const userIds = membersData.map(m => m.user_id)
       
+      console.log('🔍 Chargement des profils pour:', userIds)
+
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, nickname, avatar_url')
         .in('id', userIds)
 
       console.log('📝 Profiles data:', profilesData)
-      console.log('❌ Profiles error:', profilesError)
+      console.log('📝 Nombre de profils:', profilesData?.length)
 
       // Créer un mapping des profiles
       const profilesMap: Record<string, { 
@@ -140,26 +146,11 @@ export default function CreateVotePage() {
       }> = {}
       
       profilesData?.forEach(profile => {
-        // Logique d'affichage du nom
-        let displayName = 'Utilisateur'
-        
-        // 1. Priorité au surnom
-        if (profile.nickname?.trim()) {
-          displayName = profile.nickname.trim()
-        }
-        // 2. Sinon prénom + nom
-        else if (profile.first_name || profile.last_name) {
-          const firstName = profile.first_name?.trim() || ''
-          const lastName = profile.last_name?.trim() || ''
-          displayName = `${firstName} ${lastName}`.trim()
-        }
-        // 3. Sinon utiliser l'ID
-        else {
-          displayName = `Membre #${profile.id.substring(0, 8)}`
-        }
-        
         profilesMap[profile.id] = {
-          display_name: displayName,
+          display_name: profile.nickname || 
+                       (profile.first_name && profile.last_name 
+                         ? `${profile.first_name} ${profile.last_name}` 
+                         : profile.id.substring(0, 8)),
           avatar_url: profile.avatar_url
         }
       })
@@ -323,7 +314,7 @@ export default function CreateVotePage() {
                   >
                     Tout sélectionner
                   </button>
-                  <span className="text-gray-500">|</span>
+                  <span className="text-gray-600">|</span>
                   <button
                     onClick={deselectAll}
                     className="text-sm text-gray-400 hover:text-gray-300 transition"
@@ -333,72 +324,64 @@ export default function CreateVotePage() {
                 </div>
               </div>
 
-              {members.length === 0 ? (
-                <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-6 text-center">
-                  <p className="text-orange-300 mb-2">Aucun membre trouvé</p>
-                  <p className="text-gray-400 text-sm">Vérifiez que votre équipe contient des membres</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {members.map((member) => (
-                    <button
-                      key={member.id}
-                      onClick={() => toggleMember(member.id)}
-                      className={`w-full flex items-center gap-4 p-4 rounded-lg border-2 transition ${
-                        selectedMembers.includes(member.id)
-                          ? 'bg-blue-500/20 border-blue-500'
-                          : 'bg-slate-700/30 border-white/10 hover:border-white/30'
-                      }`}
-                    >
-                      <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
-                        selectedMembers.includes(member.id)
-                          ? 'bg-blue-500 border-blue-500'
-                          : 'border-gray-400'
-                      }`}>
-                        {selectedMembers.includes(member.id) && (
-                          <CheckCircle className="text-white" size={16} />
-                        )}
-                      </div>
-
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+              <div className="space-y-2">
+                {members.map(member => (
+                  <div
+                    key={member.id}
+                    onClick={() => toggleMember(member.id)}
+                    className={`
+                      cursor-pointer p-4 rounded-lg border-2 transition-all
+                      ${selectedMembers.includes(member.id)
+                        ? 'bg-blue-500/20 border-blue-500 ring-2 ring-blue-500/50'
+                        : 'bg-slate-700/30 border-slate-600 hover:border-slate-500'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
                         {member.display_name[0].toUpperCase()}
                       </div>
-
-                      <div className="flex-1 text-left">
-                        <p className="text-white font-medium">
-                          {member.display_name}
-                        </p>
+                      <div className="flex-1">
+                        <p className="font-semibold text-white">{member.display_name}</p>
                         <p className="text-sm text-gray-400">
                           {member.role === 'creator' ? 'Créateur' :
-                           member.role === 'manager' ? 'Manager' : 'Membre'}
+                           member.role === 'manager' ? 'Manager' :
+                           'Membre'}
                         </p>
                       </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-blue-900/30 border border-blue-500/30 rounded-lg p-4">
-              <p className="text-blue-300 text-sm">
-                💡 <strong>Astuce :</strong> Tous les membres sont sélectionnés par défaut. Décochez ceux qui n&apos;étaient pas présents au match.
-              </p>
+                      <div className={`
+                        w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
+                        ${selectedMembers.includes(member.id)
+                          ? 'bg-blue-500 border-blue-500'
+                          : 'border-gray-500'
+                        }
+                      `}>
+                        {selectedMembers.includes(member.id) && (
+                          <svg className="w-4 h-4 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                            <path d="M5 13l4 4L19 7"></path>
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <button
               onClick={handleSubmit}
               disabled={submitting || selectedMembers.length < 2}
-              className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-4 rounded-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-3"
             >
               {submitting ? (
                 <>
                   <Loader className="animate-spin" size={20} />
-                  <span>Création en cours...</span>
+                  Création en cours...
                 </>
               ) : (
                 <>
                   <Send size={20} />
-                  <span>Lancer le vote ({selectedMembers.length} participants)</span>
+                  Créer le vote
                 </>
               )}
             </button>
