@@ -1,6 +1,6 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Trophy, ThumbsDown, Ghost, Loader } from 'lucide-react'
+import { ArrowLeft, Trophy, ThumbsDown, Ghost, Loader, BarChart3 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 
@@ -8,7 +8,9 @@ type PlayerStats = {
   user_id: string
   player_name: string
   avatar_url?: string
-  vote_count: number
+  top_count: number
+  flop_count: number
+  total_votes: number
 }
 
 export default function StatsPage() {
@@ -19,6 +21,7 @@ export default function StatsPage() {
   const [masterTop, setMasterTop] = useState<PlayerStats | null>(null)
   const [masterFlop, setMasterFlop] = useState<PlayerStats | null>(null)
   const [ghosts, setGhosts] = useState<PlayerStats[]>([])
+  const [allPlayers, setAllPlayers] = useState<PlayerStats[]>([])
 
   useEffect(() => {
     loadStats()
@@ -129,6 +132,20 @@ export default function StatsPage() {
         }
       })
 
+      // Créer les stats pour tous les joueurs
+      const playersStats: PlayerStats[] = allMemberIds.map(memberId => ({
+        user_id: memberId,
+        player_name: profilesMap[memberId]?.name || 'Inconnu',
+        avatar_url: profilesMap[memberId]?.avatar_url,
+        top_count: topVotes[memberId] || 0,
+        flop_count: flopVotes[memberId] || 0,
+        total_votes: (topVotes[memberId] || 0) + (flopVotes[memberId] || 0)
+      }))
+
+      // Trier par nombre total de votes (pour l'affichage)
+      playersStats.sort((a, b) => b.total_votes - a.total_votes)
+      setAllPlayers(playersStats)
+
       // Trouver le Master TOP
       const topEntries = Object.entries(topVotes)
       if (topEntries.length > 0) {
@@ -139,7 +156,9 @@ export default function StatsPage() {
           user_id: topPlayerId,
           player_name: profilesMap[topPlayerId]?.name || 'Inconnu',
           avatar_url: profilesMap[topPlayerId]?.avatar_url,
-          vote_count: topCount
+          top_count: topCount,
+          flop_count: flopVotes[topPlayerId] || 0,
+          total_votes: topCount + (flopVotes[topPlayerId] || 0)
         })
       }
 
@@ -153,7 +172,9 @@ export default function StatsPage() {
           user_id: flopPlayerId,
           player_name: profilesMap[flopPlayerId]?.name || 'Inconnu',
           avatar_url: profilesMap[flopPlayerId]?.avatar_url,
-          vote_count: flopCount
+          top_count: topVotes[flopPlayerId] || 0,
+          flop_count: flopCount,
+          total_votes: (topVotes[flopPlayerId] || 0) + flopCount
         })
       }
 
@@ -169,7 +190,9 @@ export default function StatsPage() {
           user_id: ghostId,
           player_name: profilesMap[ghostId]?.name || 'Inconnu',
           avatar_url: profilesMap[ghostId]?.avatar_url,
-          vote_count: 0
+          top_count: 0,
+          flop_count: 0,
+          total_votes: 0
         }))
 
       setGhosts(ghostPlayers)
@@ -190,9 +213,11 @@ export default function StatsPage() {
     )
   }
 
+  const maxVotes = Math.max(...allPlayers.map(p => Math.max(p.top_count, p.flop_count)), 1)
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <button
@@ -204,80 +229,153 @@ export default function StatsPage() {
           <h1 className="text-3xl font-bold text-white">📊 Statistiques</h1>
         </div>
 
-        {/* Master TOP */}
-        <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border border-yellow-500/30 rounded-2xl p-6 mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Trophy className="text-yellow-400" size={32} />
-            <h2 className="text-2xl font-bold text-white">🏆 Master TOP</h2>
-          </div>
-          
-          {masterTop ? (
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center overflow-hidden">
-                {masterTop.avatar_url ? (
-                  <img src={masterTop.avatar_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-white font-bold text-2xl">
-                    {masterTop.player_name[0].toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <div>
-                <p className="text-white text-xl font-bold">{masterTop.player_name}</p>
-                <p className="text-yellow-300 text-lg">
-                  {masterTop.vote_count} vote{masterTop.vote_count > 1 ? 's' : ''} TOP
-                </p>
-              </div>
+        {/* Masters TOP et FLOP - Côte à côte */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Master TOP */}
+          <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border border-yellow-500/30 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Trophy className="text-yellow-400" size={32} />
+              <h2 className="text-2xl font-bold text-white">🏆 Master TOP</h2>
             </div>
-          ) : (
-            <p className="text-gray-300">Aucun vote TOP enregistré pour le moment</p>
-          )}
+            
+            {masterTop ? (
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center overflow-hidden">
+                  {masterTop.avatar_url ? (
+                    <img src={masterTop.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-white font-bold text-2xl">
+                      {masterTop.player_name[0].toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <p className="text-white text-xl font-bold">{masterTop.player_name}</p>
+                  <p className="text-yellow-300 text-lg">
+                    {masterTop.top_count} vote{masterTop.top_count > 1 ? 's' : ''} TOP
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-300">Aucun vote TOP enregistré pour le moment</p>
+            )}
+          </div>
+
+          {/* Master FLOP */}
+          <div className="bg-gradient-to-br from-red-500/20 to-pink-500/20 border border-red-500/30 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <ThumbsDown className="text-red-400" size={32} />
+              <h2 className="text-2xl font-bold text-white">👎 Master FLOP</h2>
+            </div>
+            
+            {masterFlop ? (
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-400 to-pink-500 flex items-center justify-center overflow-hidden">
+                  {masterFlop.avatar_url ? (
+                    <img src={masterFlop.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-white font-bold text-2xl">
+                      {masterFlop.player_name[0].toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <p className="text-white text-xl font-bold">{masterFlop.player_name}</p>
+                  <p className="text-red-300 text-lg">
+                    {masterFlop.flop_count} vote{masterFlop.flop_count > 1 ? 's' : ''} FLOP
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-300">Aucun vote FLOP enregistré pour le moment</p>
+            )}
+          </div>
         </div>
 
-        {/* Master FLOP */}
-        <div className="bg-gradient-to-br from-red-500/20 to-pink-500/20 border border-red-500/30 rounded-2xl p-6 mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <ThumbsDown className="text-red-400" size={32} />
-            <h2 className="text-2xl font-bold text-white">👎 Master FLOP</h2>
+        {/* Graphiques de tous les joueurs */}
+        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-6 mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <BarChart3 className="text-blue-400" size={32} />
+            <h2 className="text-2xl font-bold text-white">📊 Votes par joueur</h2>
           </div>
-          
-          {masterFlop ? (
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-400 to-pink-500 flex items-center justify-center overflow-hidden">
-                {masterFlop.avatar_url ? (
-                  <img src={masterFlop.avatar_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-white font-bold text-2xl">
-                    {masterFlop.player_name[0].toUpperCase()}
-                  </span>
-                )}
+
+          <div className="space-y-4">
+            {allPlayers.map(player => (
+              <div key={player.user_id} className="bg-slate-700/30 border border-white/10 rounded-xl p-4">
+                {/* Info joueur */}
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center overflow-hidden">
+                    {player.avatar_url ? (
+                      <img src={player.avatar_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-white font-bold">
+                        {player.player_name[0].toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-white font-semibold">{player.player_name}</p>
+                    <p className="text-gray-400 text-sm">
+                      {player.total_votes} vote{player.total_votes > 1 ? 's' : ''} au total
+                    </p>
+                  </div>
+                </div>
+
+                {/* Barres de votes */}
+                <div className="space-y-2">
+                  {/* Barre TOP */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-green-400 text-sm font-semibold flex items-center gap-1">
+                        <Trophy size={14} />
+                        TOP
+                      </span>
+                      <span className="text-green-400 text-sm font-bold">{player.top_count}</span>
+                    </div>
+                    <div className="w-full bg-slate-600/30 rounded-full h-3 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-green-500 to-emerald-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${(player.top_count / maxVotes) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Barre FLOP */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-red-400 text-sm font-semibold flex items-center gap-1">
+                        <ThumbsDown size={14} />
+                        FLOP
+                      </span>
+                      <span className="text-red-400 text-sm font-bold">{player.flop_count}</span>
+                    </div>
+                    <div className="w-full bg-slate-600/30 rounded-full h-3 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-red-500 to-pink-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${(player.flop_count / maxVotes) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-white text-xl font-bold">{masterFlop.player_name}</p>
-                <p className="text-red-300 text-lg">
-                  {masterFlop.vote_count} vote{masterFlop.vote_count > 1 ? 's' : ''} FLOP
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-gray-300">Aucun vote FLOP enregistré pour le moment</p>
-          )}
+            ))}
+          </div>
         </div>
 
         {/* Fantômes */}
-        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Ghost className="text-gray-400" size={32} />
-            <h2 className="text-2xl font-bold text-white">👻 Les Fantômes</h2>
-          </div>
-          <p className="text-gray-400 mb-4 text-sm">
-            Joueurs n&apos;ayant jamais reçu de votes TOP ou FLOP
-          </p>
-          
-          {ghosts.length > 0 ? (
-            <div className="space-y-3">
+        {ghosts.length > 0 && (
+          <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Ghost className="text-gray-400" size={32} />
+              <h2 className="text-2xl font-bold text-white">👻 Les Fantômes</h2>
+            </div>
+            <p className="text-gray-400 mb-4 text-sm">
+              Joueurs n&apos;ayant jamais reçu de votes TOP ou FLOP
+            </p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {ghosts.map(ghost => (
-                <div key={ghost.user_id} className="bg-slate-700/30 border border-white/5 rounded-lg p-4 flex items-center gap-4">
+                <div key={ghost.user_id} className="bg-slate-700/30 border border-white/10 rounded-lg p-4 flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-500 to-gray-700 flex items-center justify-center overflow-hidden">
                     {ghost.avatar_url ? (
                       <img src={ghost.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -291,10 +389,8 @@ export default function StatsPage() {
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-gray-400">Tous les joueurs ont reçu au moins un vote !</p>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )
