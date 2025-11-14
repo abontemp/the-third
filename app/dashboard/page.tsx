@@ -1,126 +1,103 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { Users, Calendar, Plus, LogOut, Loader, CheckCircle, Vote, Trash2, TrendingUp, Quote, Swords, Award, Sparkles, Archive, UserPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import NotificationBell from '@/components/NotificationBell'
-
-
-type VotingSession = {
-  id: string
-  status: string
-  flop_reader_id?: string
-  top_reader_id?: string
-  match: {
-    opponent: string
-    match_date: string
-  }
-  has_voted: boolean
-  is_participant: boolean
-}
+import { 
+  Plus, Loader, Users, History, BarChart3, Sparkles, 
+  ArrowRight, Trophy, MessageSquareQuote, Swords, Target,
+  Award, Calendar, TrendingUp, UserPlus, RefreshCw
+} from 'lucide-react'
 
 type Team = {
   id: string
   name: string
   sport: string
-  description?: string
-  userRole: string
+  description: string | null
+  userRole: 'creator' | 'manager' | 'member'
   memberCount: number
-  team_code?: string
+  pendingRequests: number
+}
+
+type VotingSession = {
+  id: string
+  match_id: string
+  status: 'pending' | 'in_progress' | 'reading' | 'completed'
+  matches: {
+    opponent: string
+    match_date: string
+    location: string | null
+  }
 }
 
 type Member = {
   id: string
-  role: string
-  joined_at: string
   user_id: string
-  display_name: string
+  role: 'creator' | 'manager' | 'member'
+  first_name: string | null
+  last_name: string | null
+  nickname: string | null
+  email: string | null
+  avatar_url: string | null
 }
 
 export default function DashboardPage() {
   const router = useRouter()
   const supabase = createClient()
+  
   const [loading, setLoading] = useState(true)
   const [teams, setTeams] = useState<Team[]>([])
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
+  const [currentUserName, setCurrentUserName] = useState<string>('')
+  const [activeSessions, setActiveSessions] = useState<VotingSession[]>([])
   const [members, setMembers] = useState<Member[]>([])
-  const [votingSessions, setVotingSessions] = useState<VotingSession[]>([])
-  const [currentUserName, setCurrentUserName] = useState('')
-  const [user, setUser] = useState<{ id: string } | null>(null)
-  
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [memberToDelete, setMemberToDelete] = useState<Member | null>(null)
-  const [hasVotes, setHasVotes] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [showManagerModal, setShowManagerModal] = useState(false)
-  const [pendingRequestsCount, setPendingRequestsCount] = useState(0)
-
-  const handleToggleManager = async (member: Member) => {
-    if (!selectedTeam) return
-    
-    const newRole = member.role === 'manager' ? 'member' : 'manager'
-    
-    try {
-      const { error } = await supabase
-        .from('team_members')
-        .update({ role: newRole })
-        .eq('user_id', member.user_id)
-        .eq('id', member.id)
-      
-      if (error) throw error
-      
-      await loadTeamDetails(selectedTeam.id, selectedTeam)
-      
-      alert(`${member.display_name} est maintenant ${newRole === 'manager' ? 'manager' : 'membre'}`)
-    } catch (err) {
-      console.error('Erreur:', err)
-      alert('Erreur lors de la modification du rôle')
-    }
-  }
 
   useEffect(() => {
-    loadDashboard()
+    loadTeams()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadDashboard = async () => {
+  useEffect(() => {
+    if (selectedTeam) {
+      loadTeamData()
+    }
+  }, [selectedTeam]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadTeams = async () => {
     try {
       setLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
       
-      const { data: { user: currentUser } } = await supabase.auth.getUser()
-      if (!currentUser) {
-        console.error('Pas d\'utilisateur malgré le middleware')
+      if (!user) {
+        router.push('/login')
         return
       }
-      setUser(currentUser)
 
-      const { data: profileData } = await supabase
+      // Récupérer le profil utilisateur
+      const { data: profile } = await supabase
         .from('profiles')
-        .select('first_name, last_name, email, nickname')
-        .eq('id', currentUser.id)
+        .select('first_name, last_name, nickname')
+        .eq('id', user.id)
         .single()
 
-      if (profileData) {
-        let displayName = 'Utilisateur'
-        
-        if (profileData.nickname?.trim()) {
-          displayName = profileData.nickname.trim()
-        } else if (profileData.first_name || profileData.last_name) {
-          const firstName = profileData.first_name?.trim() || ''
-          const lastName = profileData.last_name?.trim() || ''
-          displayName = `${firstName} ${lastName}`.trim()
-        } else if (profileData.email) {
-          displayName = profileData.email
-        }
-        
-        setCurrentUserName(displayName)
-      } else {
-        setCurrentUserName(currentUser.email || 'Utilisateur')
-      }
+      const displayName = profile?.nickname || 
+                         (profile?.first_name && profile?.last_name 
+                           ? `${profile.first_name} ${profile.last_name}` 
+                           : user.email?.split('@')[0] || 'Utilisateur')
+      setCurrentUserName(displayName)
 
+      // Récupérer les équipes de l'utilisateur
       const { data: memberships } = await supabase
         .from('team_members')
-        .select('team_id, role')
-        .eq('user_id', currentUser.id)
+        .select(`
+          role,
+          team_id,
+          teams (
+            id,
+            name,
+            sport,
+            description
+          )
+        `)
+        .eq('user_id', user.id)
 
       if (!memberships || memberships.length === 0) {
         router.push('/onboarding')
@@ -128,816 +105,453 @@ export default function DashboardPage() {
       }
 
       const teamsData = await Promise.all(
-        memberships.map(async (membership) => {
-          const { data: teamData } = await supabase
-            .from('teams')
-            .select('id, name, sport, description, team_code')
-            .eq('id', membership.team_id)
-            .single()
+        memberships.map(async (membership: any) => {
+          const team = membership.teams
 
-          if (!teamData) return null
-
-          const { count } = await supabase
+          // Compter les membres
+          const { count: memberCount } = await supabase
             .from('team_members')
             .select('*', { count: 'exact', head: true })
-            .eq('team_id', membership.team_id)
+            .eq('team_id', team.id)
+
+          // Compter les demandes en attente (seulement pour managers/créateurs)
+          let pendingCount = 0
+          if (membership.role === 'creator' || membership.role === 'manager') {
+            const { count } = await supabase
+              .from('join_requests')
+              .select('*', { count: 'exact', head: true })
+              .eq('team_id', team.id)
+              .eq('status', 'pending')
+            pendingCount = count || 0
+          }
 
           return {
-            id: teamData.id,
-            name: teamData.name,
-            sport: teamData.sport,
-            description: teamData.description,
-            team_code: teamData.team_code,
+            id: team.id,
+            name: team.name,
+            sport: team.sport,
+            description: team.description,
             userRole: membership.role,
-            memberCount: count || 0
-          } as Team
+            memberCount: memberCount || 0,
+            pendingRequests: pendingCount
+          }
         })
       )
 
-      const validTeams = teamsData.filter((t): t is Team => t !== null)
-      setTeams(validTeams)
-
-      if (validTeams.length === 1) {
-        await loadTeamDetails(validTeams[0].id, validTeams[0])
-      } else {
-        const savedTeamId = localStorage.getItem('selectedTeamId')
-        
-        if (savedTeamId) {
-          const savedTeam = validTeams.find(t => t.id === savedTeamId)
-          if (savedTeam) {
-            await loadTeamDetails(savedTeam.id, savedTeam)
-          }
-        }
+      setTeams(teamsData)
+      
+      // Sélectionner automatiquement la première équipe
+      if (teamsData.length > 0) {
+        setSelectedTeam(teamsData[0])
       }
 
-    } catch (err) {
-      console.error('Erreur:', err)
+    } catch (error) {
+      console.error('Erreur lors du chargement des équipes:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleJoinVote = async (sessionId: string) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) return
-
-      const { error } = await supabase
-        .from('session_participants')
-        .insert([{
-          session_id: sessionId,
-          user_id: user.id,
-          has_voted: false
-        }])
-
-      if (error) throw error
-
-      if (selectedTeam) {
-        await loadTeamDetails(selectedTeam.id, selectedTeam)
-      }
-
-      alert('Vous avez rejoint le vote !')
-    } catch (err) {
-      console.error('Erreur:', err)
-      alert('Erreur lors de la tentative de rejoindre le vote')
-    }
-  }
-
-  const handleDeleteMemberClick = async (member: Member) => {
+  const loadTeamData = async () => {
     if (!selectedTeam) return
-    
-    setMemberToDelete(member)
-    
-    const { data: seasons } = await supabase
-      .from('seasons')
-      .select('id')
-      .eq('team_id', selectedTeam.id)
-    
-    if (seasons && seasons.length > 0) {
-      const seasonIds = seasons.map(s => s.id)
-      
+
+    try {
+      // Charger les sessions actives
       const { data: matches } = await supabase
         .from('matches')
-        .select('id')
-        .in('season_id', seasonIds)
-      
-      if (matches && matches.length > 0) {
-        const matchIds = matches.map(m => m.id)
-        
-        const { data: sessions } = await supabase
-          .from('voting_sessions')
-          .select('id')
-          .in('match_id', matchIds)
-        
-        if (sessions && sessions.length > 0) {
-          const sessionIds = sessions.map(s => s.id)
-          
-          const { data: votes } = await supabase
-            .from('votes')
-            .select('id')
-            .in('session_id', sessionIds)
-            .or(`top_reader_id.eq.${member.user_id},flop_reader_id.eq.${member.user_id}`)
-          
-          setHasVotes(!!votes && votes.length > 0)
-        }
-      }
-    }
-    
-    setShowDeleteModal(true)
-  }
-
-  const confirmDeleteMember = async () => {
-    if (!memberToDelete || !selectedTeam) return
-    
-    try {
-      setDeleting(true)
-      
-      const { error } = await supabase
-        .from('team_members')
-        .delete()
-        .eq('id', memberToDelete.id)
-      
-      if (error) throw error
-      
-      alert('Membre supprimé avec succès')
-      setShowDeleteModal(false)
-      setMemberToDelete(null)
-      
-      await loadTeamDetails(selectedTeam.id, selectedTeam)
-      
-    } catch (err) {
-      console.error('Erreur:', err)
-      alert('Erreur lors de la suppression du membre')
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-  const loadTeamDetails = async (teamId: string, teamData: Team) => {
-    try {
-      setSelectedTeam(teamData)
-      localStorage.setItem('selectedTeamId', teamId)
-      localStorage.setItem('current_team_id', teamId) // AJOUT : sauvegarde pour les autres pages
-
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      const { data: membersData } = await supabase
-        .from('team_members')
-        .select('id, role, joined_at, user_id')
-        .eq('team_id', teamId)
-        .order('joined_at', { ascending: true })
-
-      if (!membersData) return
-
-      const membersWithNames = await Promise.all(
-        membersData.map(async (member) => {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('first_name, last_name, email, nickname')
-            .eq('id', member.user_id)
-            .single()
-
-          let displayName = 'Utilisateur'
-          
-          if (profile) {
-            if (profile.nickname?.trim()) {
-              displayName = profile.nickname.trim()
-            } else if (profile.first_name || profile.last_name) {
-              const firstName = profile.first_name?.trim() || ''
-              const lastName = profile.last_name?.trim() || ''
-              displayName = `${firstName} ${lastName}`.trim()
-            } else if (profile.email) {
-              displayName = profile.email
-            }
-          }
-
-          return {
-            ...member,
-            display_name: displayName
-          }
-        })
-      )
-
-      setMembers(membersWithNames)
-
-      // Compter les demandes en attente (pour les managers)
-      if (teamData.userRole === 'manager' || teamData.userRole === 'creator') {
-        console.log('🔢 Comptage des demandes pour team:', teamId)
-        
-        const { count: requestsCount, error: countError } = await supabase
-          .from('join_requests')
-          .select('*', { count: 'exact', head: true })
-          .eq('team_id', teamId)
-          .eq('status', 'pending')
-
-        console.log('📊 Count result:', requestsCount)
-        console.log('⚠️ Count error:', countError)
-
-        // Vérifier avec un select normal
-        const { data: requestsDebug, error: debugError } = await supabase
-          .from('join_requests')
-          .select('id, status, team_id')
-          .eq('team_id', teamId)
-          .eq('status', 'pending')
-        
-        console.log('🔍 Debug - Requests trouvées:', requestsDebug)
-        console.log('⚠️ Debug error:', debugError)
-
-        setPendingRequestsCount(requestsCount || 0)
-      } else {
-        setPendingRequestsCount(0)
-      }
-
-      const { data: currentSeason, error: seasonError } = await supabase
-        .from('seasons')
-        .select('id')
-        .eq('team_id', teamId)
-        .eq('is_active', true)
-        .single()
-
-      if (!currentSeason) {
-        console.log('❌ Aucune saison active trouvée pour cette équipe')
-        console.log('Erreur:', seasonError)
-        console.log('💡 Astuce: Vérifiez qu\'il existe une saison avec is_active=true pour cette équipe')
-        setVotingSessions([])
-        return
-      }
-      
-      console.log('✅ Saison active trouvée:', currentSeason.id)
-
-      const { data: matches, error: matchesError } = await supabase
-        .from('matches')
-        .select('id, opponent, match_date')
-        .eq('season_id', currentSeason.id)
+        .select(`
+          id,
+          opponent,
+          match_date,
+          location,
+          voting_sessions (
+            id,
+            status
+          )
+        `)
+        .eq('team_id', selectedTeam.id)
         .order('match_date', { ascending: false })
 
-      console.log('📅 Matchs trouvés:', matches?.length || 0)
-      if (matchesError) console.log('Erreur matchs:', matchesError)
-
-      if (!matches || matches.length === 0) {
-        console.log('❌ Aucun match trouvé pour cette saison')
-        setVotingSessions([])
-        return
-      }
-
-      const sessionsData = await Promise.all(
-        matches.map(async (match) => {
-          console.log('🔍 Recherche session pour match:', match.id, match.opponent)
-          
-          const { data: session, error: sessionError } = await supabase
-            .from('voting_sessions')
-            .select('id, status, flop_reader_id, top_reader_id')
-            .eq('match_id', match.id)
-            .single()
-
-          if (!session) {
-            console.log('❌ Pas de session trouvée pour match:', match.id)
-            if (sessionError) console.log('Erreur session:', sessionError)
-            return null
-          }
-
-          console.log('✅ Session trouvée:', session.id, 'status:', session.status)
-
-          const { data: participation } = await supabase
-            .from('session_participants')
-            .select('has_voted')
-            .eq('session_id', session.id)
-            .eq('user_id', user.id)
-            .single()
-
-          console.log('👤 Participation:', participation ? 'OUI' : 'NON', participation?.has_voted ? '(déjà voté)' : '(pas encore voté)')
-
-          return {
-            id: session.id,
-            status: session.status,
-            flop_reader_id: session.flop_reader_id,
-            top_reader_id: session.top_reader_id,
-            match: {
-              opponent: match.opponent,
-              match_date: match.match_date
-            },
-            has_voted: participation?.has_voted || false,
-            is_participant: !!participation
+      const sessions: VotingSession[] = []
+      matches?.forEach((match: any) => {
+        match.voting_sessions?.forEach((session: any) => {
+          if (session.status !== 'completed') {
+            sessions.push({
+              id: session.id,
+              match_id: match.id,
+              status: session.status,
+              matches: {
+                opponent: match.opponent,
+                match_date: match.match_date,
+                location: match.location
+              }
+            })
           }
         })
-      )
+      })
+      setActiveSessions(sessions)
 
-      const validSessions = sessionsData.filter(s => s !== null) as VotingSession[]
-      console.log('📊 Sessions valides trouvées:', validSessions.length)
-      console.log('Sessions:', validSessions)
-      setVotingSessions(validSessions)
+      // Charger les membres
+      const { data: teamMembers } = await supabase
+        .from('team_members')
+        .select(`
+          id,
+          user_id,
+          role,
+          profiles (
+            first_name,
+            last_name,
+            nickname,
+            email,
+            avatar_url
+          )
+        `)
+        .eq('team_id', selectedTeam.id)
+        .order('role', { ascending: true })
 
-    } catch (err) {
-      console.error('Erreur lors du chargement des détails:', err)
+      const membersData = teamMembers?.map((m: any) => ({
+        id: m.id,
+        user_id: m.user_id,
+        role: m.role,
+        first_name: m.profiles?.first_name,
+        last_name: m.profiles?.last_name,
+        nickname: m.profiles?.nickname,
+        email: m.profiles?.email,
+        avatar_url: m.profiles?.avatar_url
+      })) || []
+
+      setMembers(membersData)
+
+    } catch (error) {
+      console.error('Erreur lors du chargement des données:', error)
     }
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'pending': return { text: 'En attente', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' }
+      case 'in_progress': return { text: 'Vote en cours', color: 'bg-green-500/20 text-green-300 border-green-500/30' }
+      case 'reading': return { text: 'Lecture', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' }
+      default: return { text: status, color: 'bg-gray-500/20 text-gray-300 border-gray-500/30' }
+    }
   }
-
-  const isCreator = selectedTeam?.userRole === 'creator'
-  const isManager = selectedTeam?.userRole === 'manager' || isCreator
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <Loader className="animate-spin text-purple-400" size={48} />
+        <Loader className="animate-spin text-white" size={48} />
       </div>
     )
   }
 
-  if (!selectedTeam) {
+  // Si plusieurs équipes, permettre la sélection
+  if (!selectedTeam && teams.length > 1) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-8">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
         <div className="max-w-4xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="text-4xl font-bold text-white">Mes Équipes</h1>
-            <button
-              onClick={handleLogout}
-              className="text-white hover:text-red-400 transition flex items-center gap-2"
-            >
-              <LogOut size={20} />
-              Déconnexion
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {teams.map(team => (
-              <div
-                key={team.id}
-                onClick={() => loadTeamDetails(team.id, team)}
-                className="bg-gradient-to-br from-purple-900/50 to-blue-900/50 border border-purple-500/30 rounded-xl p-6 cursor-pointer hover:border-purple-400/50 transition"
-              >
-                <h2 className="text-2xl font-bold text-white mb-2">{team.name}</h2>
-                <p className="text-purple-300 mb-4">{team.sport}</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-300 flex items-center gap-2">
-                    <Users size={18} />
-                    {team.memberCount} membre{team.memberCount > 1 ? 's' : ''}
-                  </span>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    team.userRole === 'creator' ? 'bg-yellow-500/20 text-yellow-300' :
-                    team.userRole === 'manager' ? 'bg-purple-500/20 text-purple-300' :
-                    'bg-blue-500/20 text-blue-300'
-                  }`}>
-                    {team.userRole === 'creator' ? 'Créateur' :
-                     team.userRole === 'manager' ? 'Manager' : 'Membre'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-8 bg-gradient-to-br from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-6">
-            <h2 className="text-2xl font-bold text-white mb-4">Vous souhaitez rejoindre une autre équipe ?</h2>
-            <button 
-              onClick={() => router.push('/dashboard/join-team')}
-              className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
-            >
-              <Plus size={20} />
-              Demander à rejoindre une autre équipe
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const activeSessions = votingSessions.filter(s => s.status === 'open' || s.status === 'reading')
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 sm:p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            {teams.length > 1 && (
-              <button
-                onClick={() => setSelectedTeam(null)}
-                className="text-purple-300 hover:text-purple-100 transition"
-                title="Retour aux équipes"
-              >
-                <Users size={24} />
-              </button>
-            )}
-            <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-white">{selectedTeam.name}</h1>
-              <p className="text-purple-300">{selectedTeam.sport}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <NotificationBell />
-            <button
-              onClick={() => router.push('/dashboard/profile')}
-              className="flex items-center gap-3 px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 rounded-lg transition border border-white/10"
-              title="Voir mon profil"
-            >
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                {currentUserName[0]?.toUpperCase() || '?'}
-              </div>
-              <span className="text-white hidden sm:inline">{currentUserName}</span>
-            </button>
-            <button
-              onClick={handleLogout}
-              className="text-white hover:text-red-400 transition flex items-center gap-2"
-            >
-              <LogOut size={20} />
-              <span className="hidden sm:inline">Déconnexion</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/10 rounded-xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <h2 className="text-2xl font-bold text-white">Membres de l&apos;équipe</h2>
-              {isManager && selectedTeam.team_code && (
-                <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-3 py-1.5 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-blue-200">Code:</span>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(selectedTeam.team_code!)
-                        alert('Code copié !')
-                      }}
-                      className="text-lg font-bold text-white font-mono tracking-wider hover:text-blue-200 transition cursor-pointer"
-                      title="Cliquer pour copier"
-                    >
-                      {selectedTeam.team_code}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-3">
-              {/* Badge des demandes en attente */}
-              {isManager && pendingRequestsCount > 0 && (
-                <button
-                  onClick={() => router.push(`/dashboard/requests?team_id=${selectedTeam.id}`)}
-                  className="relative bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 animate-pulse"
-                >
-                  <UserPlus size={20} />
-                  <span className="hidden sm:inline">Demandes en attente</span>
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-slate-900">
-                    {pendingRequestsCount}
-                  </span>
-                </button>
-              )}
-              
-              {isCreator && (
-                <button
-                  onClick={() => setShowManagerModal(true)}
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
-                >
-                  Gérer les managers
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="space-y-3">
-            {members.map(member => (
-              <div
-                key={member.id}
-                className="bg-slate-700/30 border border-white/10 rounded-lg p-4 flex items-center justify-between hover:bg-slate-700/50 transition"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                    {member.display_name[0].toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-white">
-                      {member.display_name}
-                    </p>
-                    <p className="text-sm text-gray-400">
-                      Rejoint le {new Date(member.joined_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    member.role === 'creator' ? 'bg-yellow-500/20 text-yellow-300' :
-                    member.role === 'manager' ? 'bg-purple-500/20 text-purple-300' :
-                    'bg-blue-500/20 text-blue-300'
-                  }`}>
-                    {member.role === 'creator' ? 'Créateur' :
-                     member.role === 'manager' ? 'Manager' : 'Membre'}
-                  </span>
-                  
-                  {isManager && member.user_id !== user?.id && member.role !== 'creator' && (
-                    <button
-                      onClick={() => handleDeleteMemberClick(member)}
-                      className="text-red-400 hover:text-red-300 transition p-2"
-                      title="Supprimer ce membre"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* SECTION VOTES - SESSIONS ACTIVES UNIQUEMENT */}
-        {activeSessions.length > 0 ? (
-          <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                <Vote className="text-purple-400" size={24} />
-                Sessions de vote actives
-              </h2>
-              <button
-                onClick={() => router.push('/dashboard/votes-archives')}
-                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2"
-              >
-                <Archive size={18} />
-                <span className="hidden sm:inline">Votes précédents</span>
-                <span className="sm:hidden">Archives</span>
-              </button>
-            </div>
+          <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-8">
+            <h1 className="text-3xl font-bold text-white mb-2">Sélectionnez une équipe</h1>
+            <p className="text-gray-400 mb-8">Choisissez l&apos;équipe dont vous voulez voir le dashboard</p>
             
             <div className="space-y-4">
-              {activeSessions.map((session) => (
-                <div 
-                  key={session.id}
-                  className="bg-slate-800/50 border border-white/10 rounded-lg p-4"
+              {teams.map(team => (
+                <button
+                  key={team.id}
+                  onClick={() => setSelectedTeam(team)}
+                  className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-white/10 hover:border-blue-500/50 rounded-xl p-6 text-left transition group"
                 >
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
-                        {session.match.opponent}
-                        {session.status === 'reading' && 
-                         (session.flop_reader_id === user?.id || session.top_reader_id === user?.id) && (
-                          <span className="px-3 py-1 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded-full animate-pulse">
-                            🎤 Vous êtes lecteur !
-                          </span>
-                        )}
-                      </h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-400">
-                        <Calendar size={16} />
-                        {new Date(session.match.match_date).toLocaleDateString('fr-FR', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {session.status === 'open' && session.is_participant && (
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          session.has_voted 
-                            ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                            : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                        }`}>
-                          {session.has_voted ? '✓ Voté' : '⏳ En attente'}
-                        </span>
-                      )}
-                      
-                      {session.status === 'reading' && (
-                        <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs font-semibold border border-blue-500/30">
-                          📖 Lecture en cours
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xl font-bold text-white group-hover:text-blue-400 transition">
+                      {team.name}
+                    </h3>
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      team.userRole === 'creator' ? 'bg-yellow-500/20 text-yellow-300' :
+                      team.userRole === 'manager' ? 'bg-purple-500/20 text-purple-300' :
+                      'bg-blue-500/20 text-blue-300'
+                    }`}>
+                      {team.userRole === 'creator' ? 'Créateur' :
+                       team.userRole === 'manager' ? 'Manager' : 'Membre'}
+                    </span>
                   </div>
-
-                  <div className="flex gap-3">
-                    {/* Vote ouvert */}
-                    {session.status === 'open' && session.is_participant && !session.has_voted && (
-                      <button
-                        onClick={() => router.push(`/vote/${session.id}`)}
-                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
-                      >
-                        <Vote size={18} />
-                        Voter maintenant
-                      </button>
-                    )}
-
-                    {/* Lecture en cours - bouton pour le lecteur */}
-                    {session.status === 'reading' && 
-                     (session.flop_reader_id === user?.id || session.top_reader_id === user?.id) && (
-                      <button
-                        onClick={() => router.push(`/vote/${session.id}/reading`)}
-                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 animate-pulse"
-                      >
-                        <Vote size={18} />
-                        🎤 Commencer la lecture
-                      </button>
-                    )}
-
-                    {/* Bouton de gestion pour les managers */}
-                    {isManager && session.status === 'open' && (
-                      <button
-                        onClick={() => router.push(`/vote/${session.id}/manage`)}
-                        className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2"
-                      >
-                        <Users size={18} />
-                        Gérer
-                      </button>
+                  {team.description && (
+                    <p className="text-gray-400 text-sm mb-2">{team.description}</p>
+                  )}
+                  <div className="flex items-center gap-4 text-sm text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <Users size={16} />
+                      {team.memberCount} membres
+                    </span>
+                    {team.pendingRequests > 0 && (
+                      <span className="flex items-center gap-1 text-orange-400">
+                        <UserPlus size={16} />
+                        {team.pendingRequests} demande{team.pendingRequests > 1 ? 's' : ''}
+                      </span>
                     )}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
-        ) : (
-          /* Message si aucune session active */
-          <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-8 mb-6 text-center">
-            <Vote className="text-purple-400 mx-auto mb-4" size={48} />
-            <h2 className="text-2xl font-bold text-white mb-2">Aucun vote actif</h2>
-            <p className="text-gray-400 mb-6">
-              Il n&apos;y a pas de session de vote en cours pour le moment
-            </p>
+        </div>
+      </div>
+    )
+  }
+
+  const isManager = selectedTeam && (selectedTeam.userRole === 'creator' || selectedTeam.userRole === 'manager')
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* Header */}
+      <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-orange-500 rounded-lg flex items-center justify-center font-bold text-white">
+                T3
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-white">{selectedTeam?.name}</h1>
+                <p className="text-xs text-gray-400">{selectedTeam?.sport}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => router.push('/dashboard/profile')}
+                className="hidden sm:flex items-center gap-3 bg-slate-800/50 px-4 py-2 rounded-lg border border-white/10 hover:border-blue-500/50 transition"
+              >
+                <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                  {currentUserName ? currentUserName[0].toUpperCase() : 'U'}
+                </div>
+                <span className="text-white text-sm font-medium">{currentUserName}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* Section 1: Création de vote (Managers seulement) */}
+        {isManager && (
+          <div className="mb-8">
             <button
-              onClick={() => router.push('/dashboard/votes-archives')}
-              className="bg-slate-700 hover:bg-slate-600 text-white px-6 py-3 rounded-lg font-medium transition inline-flex items-center gap-2"
+              onClick={() => router.push('/vote/setup')}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-6 rounded-2xl font-bold text-lg transition shadow-lg shadow-blue-500/25 flex items-center justify-center gap-3"
             >
-              <Archive size={20} />
-              Voir les votes précédents
+              <Plus size={28} />
+              Créer une nouvelle session de vote
             </button>
           </div>
         )}
 
-        {isManager && (
-          <div className="bg-gradient-to-br from-orange-900/30 to-red-900/30 border border-orange-500/30 rounded-xl p-6 mb-6">
-            <h2 className="text-2xl font-bold text-white mb-4">Actions rapides</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <button 
-                onClick={() => router.push('/dashboard/matches/create')}
-                className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
-              >
-                <Plus size={20} />
-                Créer un match
-              </button>
-              <button 
-                onClick={() => router.push('/dashboard/history')}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
-              >
-                <Calendar size={20} />
-                Historique
-              </button>
-              <button 
-                onClick={() => router.push(`/dashboard/stats?team_id=${selectedTeam.id}`)}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
-              >
-                <TrendingUp size={20} />
-                Statistiques
-              </button>
+        {/* Section 2: Sessions actives */}
+        {activeSessions.length > 0 && (
+          <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-6 mb-8">
+            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+              <Calendar className="text-blue-400" />
+              Sessions de vote actives
+            </h2>
+            <div className="space-y-3">
+              {activeSessions.map(session => {
+                const statusInfo = getStatusLabel(session.status)
+                return (
+                  <button
+                    key={session.id}
+                    onClick={() => {
+                      if (session.status === 'in_progress') {
+                        router.push(`/vote/${session.id}`)
+                      } else if (session.status === 'reading') {
+                        router.push(`/vote/${session.id}/reading`)
+                      }
+                    }}
+                    className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-white/10 hover:border-blue-500/50 rounded-xl p-4 text-left transition group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-semibold group-hover:text-blue-400 transition">
+                          vs {session.matches.opponent}
+                        </p>
+                        <p className="text-gray-400 text-sm">
+                          {new Date(session.matches.match_date).toLocaleDateString('fr-FR', {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric'
+                          })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusInfo.color}`}>
+                          {statusInfo.text}
+                        </span>
+                        <ArrowRight className="text-gray-400 group-hover:text-blue-400 transition" size={20} />
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
 
-        {/* NOUVELLE SECTION : Gestion d'équipe - visible pour tous */}
-        <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-6 mb-6">
-          <h2 className="text-2xl font-bold text-white mb-4">Gestion d&apos;équipe</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <button 
-              onClick={() => router.push('/dashboard/join-team')}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
+        {/* Section 3: Statistiques et Fonctionnalités */}
+        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-6 mb-8">
+          <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+            <TrendingUp className="text-green-400" />
+            Statistiques & Fonctionnalités
+          </h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Historique */}
+            <button
+              onClick={() => router.push('/dashboard/history')}
+              className="bg-gradient-to-br from-slate-700/50 to-slate-800/50 hover:from-slate-700/70 hover:to-slate-800/70 border border-white/10 hover:border-blue-500/50 rounded-xl p-5 text-left transition group"
             >
-              <Plus size={20} />
-              Demander à rejoindre une autre équipe
+              <History className="text-blue-400 mb-3" size={28} />
+              <h3 className="text-white font-semibold text-lg mb-1 group-hover:text-blue-400 transition">
+                Historique
+              </h3>
+              <p className="text-gray-400 text-sm">Voir tous les votes passés</p>
             </button>
-            {teams.length > 1 && (
-              <button 
-                onClick={() => setSelectedTeam(null)}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+
+            {/* Statistiques */}
+            <button
+              onClick={() => router.push('/dashboard/stats')}
+              className="bg-gradient-to-br from-purple-700/50 to-purple-800/50 hover:from-purple-700/70 hover:to-purple-800/70 border border-white/10 hover:border-purple-500/50 rounded-xl p-5 text-left transition group"
+            >
+              <BarChart3 className="text-purple-400 mb-3" size={28} />
+              <h3 className="text-white font-semibold text-lg mb-1 group-hover:text-purple-400 transition">
+                Statistiques
+              </h3>
+              <p className="text-gray-400 text-sm">Master TOP, FLOP & Fantômes</p>
+            </button>
+
+            {/* Badges */}
+            <button
+              onClick={() => router.push('/dashboard/badges')}
+              className="bg-gradient-to-br from-yellow-700/50 to-orange-700/50 hover:from-yellow-700/70 hover:to-orange-700/70 border border-white/10 hover:border-yellow-500/50 rounded-xl p-5 text-left transition group"
+            >
+              <Award className="text-yellow-400 mb-3" size={28} />
+              <h3 className="text-white font-semibold text-lg mb-1 group-hover:text-yellow-400 transition">
+                Badges
+              </h3>
+              <p className="text-gray-400 text-sm">Réalisations & trophées</p>
+            </button>
+
+            {/* Citations */}
+            <button
+              onClick={() => router.push('/dashboard/quotes')}
+              className="bg-gradient-to-br from-pink-700/50 to-rose-700/50 hover:from-pink-700/70 hover:to-rose-700/70 border border-white/10 hover:border-pink-500/50 rounded-xl p-5 text-left transition group"
+            >
+              <MessageSquareQuote className="text-pink-400 mb-3" size={28} />
+              <h3 className="text-white font-semibold text-lg mb-1 group-hover:text-pink-400 transition">
+                Citations
+              </h3>
+              <p className="text-gray-400 text-sm">Hall of Fame des commentaires</p>
+            </button>
+
+            {/* Rivalités */}
+            <button
+              onClick={() => router.push('/dashboard/rivalries')}
+              className="bg-gradient-to-br from-red-700/50 to-orange-700/50 hover:from-red-700/70 hover:to-orange-700/70 border border-white/10 hover:border-red-500/50 rounded-xl p-5 text-left transition group"
+            >
+              <Swords className="text-red-400 mb-3" size={28} />
+              <h3 className="text-white font-semibold text-lg mb-1 group-hover:text-red-400 transition">
+                Rivalités
+              </h3>
+              <p className="text-gray-400 text-sm">Rivaux, supporters & duels</p>
+            </button>
+
+            {/* Prédictions */}
+            <button
+              onClick={() => router.push('/dashboard/predictions-leaderboard')}
+              className="bg-gradient-to-br from-cyan-700/50 to-blue-700/50 hover:from-cyan-700/70 hover:to-blue-700/70 border border-white/10 hover:border-cyan-500/50 rounded-xl p-5 text-left transition group"
+            >
+              <Target className="text-cyan-400 mb-3" size={28} />
+              <h3 className="text-white font-semibold text-lg mb-1 group-hover:text-cyan-400 transition">
+                Pronostiqueurs
+              </h3>
+              <p className="text-gray-400 text-sm">Classement des prédictions</p>
+            </button>
+          </div>
+        </div>
+
+        {/* Section 4: Membres de l'équipe */}
+        <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-6 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+              <Users className="text-blue-400" />
+              Membres de l&apos;équipe
+            </h2>
+            {isManager && selectedTeam.pendingRequests > 0 && (
+              <button
+                onClick={() => router.push('/dashboard/requests')}
+                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
               >
-                <Users size={20} />
-                Changer d&apos;équipe
+                <UserPlus size={18} />
+                {selectedTeam.pendingRequests} demande{selectedTeam.pendingRequests > 1 ? 's' : ''}
               </button>
             )}
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {members.map(member => {
+              const displayName = member.nickname || 
+                                (member.first_name && member.last_name 
+                                  ? `${member.first_name} ${member.last_name}` 
+                                  : member.email || 'Membre')
+              
+              return (
+                <div key={member.id} className="bg-slate-700/30 border border-white/10 rounded-xl p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center overflow-hidden">
+                      {member.avatar_url ? (
+                        <img src={member.avatar_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-white font-bold text-lg">
+                          {displayName[0].toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-white font-semibold">{displayName}</p>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        member.role === 'creator' ? 'bg-yellow-500/20 text-yellow-300' :
+                        member.role === 'manager' ? 'bg-purple-500/20 text-purple-300' :
+                        'bg-blue-500/20 text-blue-300'
+                      }`}>
+                        {member.role === 'creator' ? 'Créateur' :
+                         member.role === 'manager' ? 'Manager' : 'Membre'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
 
-        <div className="bg-gradient-to-br from-pink-900/30 to-purple-900/30 border border-pink-500/30 rounded-xl p-6">
-          <h2 className="text-2xl font-bold text-white mb-4">🎮 Fonctionnalités Fun</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <button 
-              onClick={() => router.push(`/dashboard/badges?team_id=${selectedTeam.id}`)}
-              className="bg-gradient-to-br from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+        {/* Section 5: Actions équipes */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            onClick={() => router.push('/onboarding')}
+            className="bg-slate-700/50 hover:bg-slate-700/70 border border-white/10 hover:border-green-500/50 text-white py-4 px-6 rounded-xl font-semibold transition flex items-center justify-center gap-3"
+          >
+            <UserPlus size={24} />
+            Rejoindre une autre équipe
+          </button>
+
+          {teams.length > 1 && (
+            <button
+              onClick={() => setSelectedTeam(null)}
+              className="bg-slate-700/50 hover:bg-slate-700/70 border border-white/10 hover:border-purple-500/50 text-white py-4 px-6 rounded-xl font-semibold transition flex items-center justify-center gap-3"
             >
-              <Award size={20} />
-              Mes Badges
+              <RefreshCw size={24} />
+              Switcher vers le dashboard d&apos;une autre équipe
             </button>
-            <button 
-              onClick={() => router.push(`/dashboard/quotes?team_id=${selectedTeam.id}`)}
-              className="bg-gradient-to-br from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
-            >
-              <Quote size={20} />
-              Citations
-            </button>
-            <button 
-              onClick={() => router.push(`/dashboard/rivalries?team_id=${selectedTeam.id}`)}
-              className="bg-gradient-to-br from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
-            >
-              <Swords size={20} />
-              Rivalités
-            </button>
-            <button 
-              onClick={() => router.push(`/dashboard/predictions-leaderboard?team_id=${selectedTeam.id}`)}
-              className="bg-gradient-to-br from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
-            >
-              <Sparkles size={20} />
-              Pronostiqueurs
-            </button>
-          </div>
+          )}
         </div>
       </div>
-
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 border border-white/10 rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-white mb-4">
-              Confirmer la suppression
-            </h3>
-            <p className="text-gray-300 mb-6">
-              {hasVotes ? (
-                <>
-                  <span className="text-orange-400 font-semibold">⚠️ Ce joueur a déjà reçu des votes.</span>
-                  <br /><br />
-                  Êtes-vous sûr de vouloir le supprimer ?
-                </>
-              ) : (
-                <>Êtes-vous sûr de vouloir supprimer ce membre ?</>
-              )}
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowDeleteModal(false)
-                  setMemberToDelete(null)
-                }}
-                disabled={deleting}
-                className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg transition disabled:opacity-50"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={confirmDeleteMember}
-                disabled={deleting}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg transition disabled:opacity-50"
-              >
-                {deleting ? 'Suppression...' : 'Supprimer'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showManagerModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 border border-white/10 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-xl font-bold text-white mb-4">
-              Gestion des managers
-            </h3>
-            <p className="text-gray-400 mb-6 text-sm">
-              Les managers peuvent créer des matchs, gérer les votes et voir les statistiques
-            </p>
-
-            <div className="space-y-3 mb-6">
-              {members
-                .filter(m => m.role !== 'creator')
-                .map((member) => (
-                  <div key={member.id} className="bg-slate-700/30 border border-white/10 rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-white">
-                        {member.display_name}
-                      </p>
-                      <p className="text-sm text-gray-400">
-                        {member.role === 'manager' ? '✅ Manager' : 'Membre'}
-                      </p>
-                    </div>
-                    
-                    <button
-                      onClick={() => handleToggleManager(member)}
-                      className={`px-4 py-2 rounded-lg font-medium transition ${
-                        member.role === 'manager'
-                          ? 'bg-red-600 hover:bg-red-700 text-white'
-                          : 'bg-purple-600 hover:bg-purple-700 text-white'
-                      }`}
-                    >
-                      {member.role === 'manager' ? 'Retirer' : 'Nommer manager'}
-                    </button>
-                  </div>
-                ))}
-            </div>
-
-            <button
-              onClick={() => setShowManagerModal(false)}
-              className="w-full bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg transition"
-            >
-              Fermer
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
