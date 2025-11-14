@@ -191,34 +191,53 @@ export default function DashboardPage() {
       setActiveSessions(sessions)
 
       // Charger les membres
-      const { data: teamMembers } = await supabase
+      const { data: teamMembers, error: membersError } = await supabase
         .from('team_members')
-        .select(`
-          id,
-          user_id,
-          role,
-          profiles (
-            first_name,
-            last_name,
-            nickname,
-            email,
-            avatar_url
-          )
-        `)
+        .select('id, user_id, role')
         .eq('team_id', selectedTeam.id)
         .order('role', { ascending: true })
 
-      const membersData = teamMembers?.map((m: any) => ({
-        id: m.id,
-        user_id: m.user_id,
-        role: m.role,
-        first_name: m.profiles?.first_name,
-        last_name: m.profiles?.last_name,
-        nickname: m.profiles?.nickname,
-        email: m.profiles?.email,
-        avatar_url: m.profiles?.avatar_url
-      })) || []
+      console.log('Team members raw:', teamMembers)
+      console.log('Members error:', membersError)
 
+      if (!teamMembers || teamMembers.length === 0) {
+        console.log('No team members found')
+        setMembers([])
+        return
+      }
+
+      // Récupérer les profils séparément
+      const userIds = teamMembers.map((m: any) => m.user_id)
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, nickname, email, avatar_url')
+        .in('id', userIds)
+
+      console.log('Profiles:', profiles)
+      console.log('Profiles error:', profilesError)
+
+      // Créer une map des profils
+      const profilesMap: Record<string, any> = {}
+      profiles?.forEach(p => {
+        profilesMap[p.id] = p
+      })
+
+      // Combiner les données
+      const membersData = teamMembers.map((m: any) => {
+        const profile = profilesMap[m.user_id]
+        return {
+          id: m.id,
+          user_id: m.user_id,
+          role: m.role,
+          first_name: profile?.first_name || null,
+          last_name: profile?.last_name || null,
+          nickname: profile?.nickname || null,
+          email: profile?.email || null,
+          avatar_url: profile?.avatar_url || null
+        }
+      })
+
+      console.log('Final members data:', membersData)
       setMembers(membersData)
 
     } catch (error) {
