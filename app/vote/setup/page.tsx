@@ -9,6 +9,8 @@ type TeamMember = {
   id: string
   user_id: string
   role: string
+  display_name: string
+  avatar_url?: string
 }
 
 type Season = {
@@ -69,15 +71,65 @@ export default function VoteSetupPage() {
         return
       }
 
-// Charger TOUS les membres de l'équipe (pas seulement les participants)
-const { data: membersData } = await supabase
-  .from('team_members')
-  .select('id, user_id, role')
-  .eq('team_id', membership.team_id)
+      // Charger TOUS les membres de l'équipe
+      const { data: membersData } = await supabase
+        .from('team_members')
+        .select('id, user_id, role')
+        .eq('team_id', membership.team_id)
 
-console.log('Membres chargés:', membersData) // Pour debug
+      console.log('Membres chargés:', membersData)
+      console.log('Nombre de membres:', membersData?.length)
 
-      setMembers(membersData || [])
+      if (!membersData || membersData.length === 0) {
+        setError("Aucun membre dans l'équipe")
+        setLoading(false)
+        return
+      }
+
+      // 🎯 NOUVEAU : Charger les profils de TOUS les membres
+      const userIds = membersData.map(m => m.user_id)
+      
+      console.log('🔍 Chargement des profils pour:', userIds)
+
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, nickname, avatar_url')
+        .in('id', userIds)
+
+      console.log('📝 Profils chargés:', profilesData)
+      console.log('📝 Nombre de profils:', profilesData?.length)
+
+      if (profilesError) {
+        console.error('Erreur profils:', profilesError)
+      }
+
+      // Créer un mapping des profiles
+      const profilesMap: Record<string, { 
+        display_name: string
+        avatar_url?: string 
+      }> = {}
+      
+      profilesData?.forEach(profile => {
+        profilesMap[profile.id] = {
+          display_name: profile.nickname || 
+                       (profile.first_name && profile.last_name 
+                         ? `${profile.first_name} ${profile.last_name}` 
+                         : profile.id.substring(0, 8)),
+          avatar_url: profile.avatar_url
+        }
+      })
+
+      // Combiner les données
+      const formattedMembers: TeamMember[] = membersData.map(member => ({
+        id: member.id,
+        user_id: member.user_id,
+        role: member.role,
+        display_name: profilesMap[member.user_id]?.display_name || `Membre #${member.user_id.substring(0, 8)}`,
+        avatar_url: profilesMap[member.user_id]?.avatar_url
+      }))
+
+      console.log('✅ Membres formatés:', formattedMembers)
+      setMembers(formattedMembers)
 
       // Charger les saisons actives
       const { data: seasonsData } = await supabase
@@ -206,11 +258,11 @@ console.log('Membres chargés:', membersData) // Pour debug
       setSuccess("Match et vote créés avec succès ! Redirection...")
       
       setTimeout(() => {
-  router.push(`/vote/${session.id}/manage`)
-}, 1500)
+        router.push(`/vote/${session.id}/manage`)
+      }, 1500)
 
-} catch (err: unknown) {
-    console.error('Erreur:', err)
+    } catch (err: unknown) {
+      console.error('Erreur:', err)
       setError(
         typeof err === 'object' && err !== null && 'message' in err
           ? String((err as { message?: string }).message)
@@ -374,12 +426,12 @@ console.log('Membres chargés:', membersData) // Pour debug
                     </div>
 
                     <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                      {member.user_id.substring(0, 2).toUpperCase()}
+                      {member.display_name[0]?.toUpperCase() || '?'}
                     </div>
 
                     <div className="flex-1 text-left">
                       <p className="text-white font-medium">
-                        Membre #{member.user_id.substring(0, 8)}
+                        {member.display_name}
                       </p>
                       <p className="text-sm text-gray-400">
                         {member.role === 'creator' ? 'Créateur' :
