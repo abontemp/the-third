@@ -278,6 +278,7 @@ export default function DashboardPage() {
     try {
       setSelectedTeam(teamData)
       localStorage.setItem('selectedTeamId', teamId)
+      localStorage.setItem('current_team_id', teamId) // AJOUT : sauvegarde pour les autres pages
 
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
@@ -576,7 +577,7 @@ export default function DashboardPage() {
               {/* Badge des demandes en attente */}
               {isManager && pendingRequestsCount > 0 && (
                 <button
-onClick={() => router.push(`/dashboard/requests?team_id=${selectedTeam.id}`)}
+                  onClick={() => router.push(`/dashboard/requests?team_id=${selectedTeam.id}`)}
                   className="relative bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 animate-pulse"
                 >
                   <UserPlus size={20} />
@@ -782,7 +783,7 @@ onClick={() => router.push(`/dashboard/requests?team_id=${selectedTeam.id}`)}
                 Historique
               </button>
               <button 
-                onClick={() => router.push('/dashboard/stats')}
+                onClick={() => router.push(`/dashboard/stats?team_id=${selectedTeam.id}`)}
                 className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
               >
                 <TrendingUp size={20} />
@@ -819,28 +820,28 @@ onClick={() => router.push(`/dashboard/requests?team_id=${selectedTeam.id}`)}
           <h2 className="text-2xl font-bold text-white mb-4">🎮 Fonctionnalités Fun</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <button 
-              onClick={() => router.push('/dashboard/badges')}
+              onClick={() => router.push(`/dashboard/badges?team_id=${selectedTeam.id}`)}
               className="bg-gradient-to-br from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
             >
               <Award size={20} />
               Mes Badges
             </button>
             <button 
-              onClick={() => router.push('/dashboard/quotes')}
+              onClick={() => router.push(`/dashboard/quotes?team_id=${selectedTeam.id}`)}
               className="bg-gradient-to-br from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
             >
               <Quote size={20} />
               Citations
             </button>
             <button 
-              onClick={() => router.push('/dashboard/rivalries')}
+              onClick={() => router.push(`/dashboard/rivalries?team_id=${selectedTeam.id}`)}
               className="bg-gradient-to-br from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
             >
               <Swords size={20} />
               Rivalités
             </button>
             <button 
-              onClick={() => router.push('/dashboard/predictions-leaderboard')}
+              onClick={() => router.push(`/dashboard/predictions-leaderboard?team_id=${selectedTeam.id}`)}
               className="bg-gradient-to-br from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-2"
             >
               <Sparkles size={20} />
