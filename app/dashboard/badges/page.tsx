@@ -1,74 +1,24 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader, Award, Trophy, Zap, Target, Shield, Crown, TrendingUp, Star } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { ArrowLeft, Loader, Award } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
 
 type Badge = {
   id: string
-  badge_type: string
+  badge_name: string
   earned_at: string
-  season_name?: string
-  metadata?: Record<string, unknown>
+  player_name: string
 }
 
-const BADGE_CONFIG: Record<string, { 
-  name: string
-  description: string
-  icon: typeof Trophy
-  color: string
-}> = {
-  'hat_trick': {
-    name: 'Hat-trick',
-    description: '3 TOP consécutifs',
-    icon: Trophy,
-    color: 'from-yellow-500 to-orange-500'
-  },
-  'comeback_king': {
-    name: 'Comeback King',
-    description: 'Passer de FLOP à TOP en 2 matchs',
-    icon: TrendingUp,
-    color: 'from-green-500 to-emerald-500'
-  },
-  'untouchable': {
-    name: 'Intouchable',
-    description: 'Aucun FLOP sur une saison',
-    icon: Shield,
-    color: 'from-blue-500 to-cyan-500'
-  },
-  'polarizing': {
-    name: 'Polarisant',
-    description: 'Même nombre de TOP et FLOP',
-    icon: Zap,
-    color: 'from-purple-500 to-pink-500'
-  },
-  'regular': {
-    name: 'Régulier',
-    description: 'A voté à 100% des matchs d\'une saison',
-    icon: Target,
-    color: 'from-indigo-500 to-blue-500'
-  },
-  'mvp_season': {
-    name: 'MVP de la saison',
-    description: 'Meilleur joueur de la saison',
-    icon: Crown,
-    color: 'from-amber-500 to-yellow-500'
-  },
-  'prediction_master': {
-    name: 'Oracle',
-    description: '5 prédictions correctes d\'affilée',
-    icon: Star,
-    color: 'from-violet-500 to-purple-500'
-  }
-}
-
-export default function BadgesPage() {
+function BadgesContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   
   const [loading, setLoading] = useState(true)
+  const [badges, setBadges] = useState<Badge[]>([])
   const [myBadges, setMyBadges] = useState<Badge[]>([])
-  const [userName, setUserName] = useState('')
 
   useEffect(() => {
     loadBadges()
@@ -76,131 +26,96 @@ export default function BadgesPage() {
 
   const loadBadges = async () => {
     try {
-      console.log('🔍 Chargement des badges...')
       setLoading(true)
       
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      
-      if (userError) {
-        console.error('❌ Erreur auth:', userError)
-        router.push('/login')
-        return
-      }
-      
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        console.log('❌ Pas d\'utilisateur')
         router.push('/login')
         return
       }
 
-      console.log('✅ Utilisateur trouvé:', user.id)
+      // Récupérer le team_id depuis l'URL
+      let teamId = searchParams.get('team_id')
+      console.log('🔗 Team ID depuis URL:', teamId)
 
-      // Récupérer le profil
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('first_name, last_name, nickname')
-        .eq('id', user.id)
-        .single()
-
-      if (profileError) {
-        console.error('⚠️ Erreur profil:', profileError)
+      if (!teamId) {
+        teamId = localStorage.getItem('current_team_id')
+        console.log('📦 Team ID depuis localStorage:', teamId)
       }
 
-      const displayName = profile?.nickname || 
-                         (profile?.first_name && profile?.last_name 
-                           ? `${profile.first_name} ${profile.last_name}` 
-                           : 'Vous')
-      setUserName(displayName)
-      console.log('👤 Nom utilisateur:', displayName)
+      if (!teamId) {
+        const { data: memberships } = await supabase
+          .from('team_members')
+          .select('team_id')
+          .eq('user_id', user.id)
+          .limit(1)
 
-      // Récupérer l'équipe
-      const { data: membership, error: membershipError } = await supabase
-        .from('team_members')
-        .select('team_id')
-        .eq('user_id', user.id)
-        .single()
+        if (!memberships || memberships.length === 0) {
+          setLoading(false)
+          return
+        }
 
-      if (membershipError) {
-        console.error('⚠️ Erreur membership:', membershipError)
-        console.log('💡 Pas d\'équipe trouvée, affichage sans badges')
-        // Ne pas rediriger, juste afficher sans badges
-        setLoading(false)
-        return
+        teamId = memberships[0].team_id
       }
 
-      if (!membership) {
-        console.log('ℹ️ Pas d\'équipe, affichage sans badges')
-        setLoading(false)
-        return
-      }
+      console.log('✅ Équipe trouvée:', teamId)
 
-      console.log('✅ Équipe trouvée:', membership.team_id)
-
-      // Récupérer mes badges
-      const { data: badgesData, error: badgesError } = await supabase
+      // Récupérer tous les badges de l'équipe
+      const { data: badgesData } = await supabase
         .from('player_badges')
-        .select(`
-          id,
-          badge_type,
-          earned_at,
-          metadata,
-          seasons (
-            name
-          )
-        `)
-        .eq('user_id', user.id)
-        .eq('team_id', membership.team_id)
+        .select('id, badge_name, earned_at, player_id')
+        .eq('team_id', teamId)
         .order('earned_at', { ascending: false })
 
-      if (badgesError) {
-        console.error('⚠️ Erreur badges:', badgesError)
-        console.log('💡 Affichage sans badges')
+      if (!badgesData || badgesData.length === 0) {
+        setBadges([])
+        setMyBadges([])
         setLoading(false)
         return
       }
 
-      console.log('✅ Badges récupérés:', badgesData?.length || 0)
+      // Récupérer les profils
+      const playerIds = [...new Set(badgesData.map(b => b.player_id))]
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, nickname')
+        .in('id', playerIds)
 
-      if (badgesData) {
-        const formattedBadges = badgesData.map(b => {
-          const seasonData = Array.isArray(b.seasons) ? b.seasons[0] : b.seasons
-          return {
-            id: b.id,
-            badge_type: b.badge_type,
-            earned_at: b.earned_at,
-            season_name: seasonData?.name,
-            metadata: b.metadata as Record<string, unknown> | undefined
-          }
-        })
-        setMyBadges(formattedBadges)
-      }
+      const profilesMap: Record<string, string> = {}
+      profilesData?.forEach(p => {
+        profilesMap[p.id] = p.nickname || 
+                           (p.first_name && p.last_name 
+                             ? `${p.first_name} ${p.last_name}` 
+                             : 'Joueur')
+      })
+
+      const formattedBadges = badgesData.map(b => ({
+        id: b.id,
+        badge_name: b.badge_name,
+        earned_at: b.earned_at,
+        player_name: profilesMap[b.player_id] || 'Inconnu'
+      }))
+
+      setBadges(formattedBadges)
+      setMyBadges(formattedBadges.filter(b => badgesData.find(bd => bd.id === b.id)?.player_id === user.id))
 
     } catch (err) {
-      console.error('❌ Erreur générale:', err)
-      // Ne pas rediriger en cas d'erreur, juste afficher sans badges
+      console.error('Erreur:', err)
     } finally {
       setLoading(false)
-      console.log('✅ Chargement terminé')
     }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <Loader className="text-white animate-spin mx-auto mb-4" size={48} />
-          <p className="text-gray-400">Chargement des badges...</p>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-yellow-900 to-slate-900 flex items-center justify-center">
+        <Loader className="text-white animate-spin" size={48} />
       </div>
     )
   }
 
-  const earnedBadgeTypes = new Set(myBadges.map(b => b.badge_type))
-  const allBadgeTypes = Object.keys(BADGE_CONFIG)
-  const lockedBadges = allBadgeTypes.filter(type => !earnedBadgeTypes.has(type))
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-yellow-900 to-slate-900">
       <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -221,99 +136,67 @@ export default function BadgesPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* En-tête avec stats */}
-        <div className="bg-gradient-to-br from-yellow-900/30 to-orange-900/30 border border-yellow-500/30 rounded-2xl p-8 mb-8 text-center">
-          <Award className="mx-auto mb-4 text-yellow-400" size={64} />
-          <h2 className="text-3xl font-bold text-white mb-2">{userName}</h2>
-          <p className="text-gray-400 mb-4">Vos réalisations</p>
-          <div className="flex justify-center gap-8">
-            <div>
-              <p className="text-4xl font-bold text-yellow-400">{myBadges.length}</p>
-              <p className="text-gray-400 text-sm">Badges débloqués</p>
+        {/* Mes badges */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-white mb-4">Mes badges ({myBadges.length})</h2>
+          {myBadges.length === 0 ? (
+            <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-8 text-center">
+              <Award className="mx-auto mb-4 text-gray-600" size={48} />
+              <p className="text-gray-400">Vous n&apos;avez pas encore de badges</p>
             </div>
-            <div>
-              <p className="text-4xl font-bold text-gray-500">{lockedBadges.length}</p>
-              <p className="text-gray-400 text-sm">Badges à débloquer</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {myBadges.map((badge) => (
+                <div key={badge.id} className="bg-gradient-to-br from-yellow-900/30 to-orange-900/30 border border-yellow-500/30 rounded-xl p-6 text-center">
+                  <Award className="mx-auto mb-3 text-yellow-400" size={48} />
+                  <h3 className="text-lg font-bold text-white mb-1">{badge.badge_name}</h3>
+                  <p className="text-sm text-gray-400">
+                    {new Date(badge.earned_at).toLocaleDateString('fr-FR')}
+                  </p>
+                </div>
+              ))}
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Badges débloqués */}
-        {myBadges.length > 0 && (
-          <div className="mb-8">
-            <h3 className="text-2xl font-bold text-white mb-4">🏆 Badges Débloqués</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {myBadges.map((badge) => {
-                const config = BADGE_CONFIG[badge.badge_type]
-                if (!config) return null
-                
-                const Icon = config.icon
-
-                return (
-                  <div 
-                    key={badge.id}
-                    className={`bg-gradient-to-br ${config.color} p-1 rounded-2xl`}
-                  >
-                    <div className="bg-slate-900 rounded-xl p-6 h-full">
-                      <div className="flex items-center justify-between mb-4">
-                        <Icon className="text-white" size={40} />
-                        <span className="bg-green-500/20 text-green-300 text-xs px-2 py-1 rounded-full">
-                          Débloqué
-                        </span>
-                      </div>
-                      <h4 className="text-xl font-bold text-white mb-2">{config.name}</h4>
-                      <p className="text-gray-400 text-sm mb-4">{config.description}</p>
-                      <div className="text-xs text-gray-500">
-                        {badge.season_name && <p>Saison : {badge.season_name}</p>}
-                        <p>Obtenu le {new Date(badge.earned_at).toLocaleDateString('fr-FR')}</p>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
+        {/* Tous les badges de l'équipe */}
+        <div>
+          <h2 className="text-2xl font-bold text-white mb-4">Tous les badges de l&apos;équipe</h2>
+          {badges.length === 0 ? (
+            <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-8 text-center">
+              <Award className="mx-auto mb-4 text-gray-600" size={48} />
+              <p className="text-gray-400">Aucun badge n&apos;a encore été attribué</p>
             </div>
-          </div>
-        )}
-
-        {/* Badges verrouillés */}
-        {lockedBadges.length > 0 && (
-          <div>
-            <h3 className="text-2xl font-bold text-white mb-4">🔒 Badges à Débloquer</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {lockedBadges.map((badgeType) => {
-                const config = BADGE_CONFIG[badgeType]
-                const Icon = config.icon
-
-                return (
-                  <div 
-                    key={badgeType}
-                    className="bg-slate-800/30 border border-gray-700/50 rounded-2xl p-6 opacity-60"
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <Icon className="text-gray-600" size={40} />
-                      <span className="bg-gray-700/50 text-gray-400 text-xs px-2 py-1 rounded-full">
-                        Verrouillé
-                      </span>
-                    </div>
-                    <h4 className="text-xl font-bold text-gray-500 mb-2">{config.name}</h4>
-                    <p className="text-gray-600 text-sm">{config.description}</p>
+          ) : (
+            <div className="space-y-3">
+              {badges.map((badge) => (
+                <div key={badge.id} className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-xl p-4 flex items-center gap-4">
+                  <Award className="text-yellow-400" size={32} />
+                  <div className="flex-1">
+                    <h3 className="font-bold text-white">{badge.badge_name}</h3>
+                    <p className="text-sm text-gray-400">{badge.player_name}</p>
                   </div>
-                )
-              })}
+                  <span className="text-sm text-gray-500">
+                    {new Date(badge.earned_at).toLocaleDateString('fr-FR')}
+                  </span>
+                </div>
+              ))}
             </div>
-          </div>
-        )}
-
-        {myBadges.length === 0 && (
-          <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-12 text-center">
-            <Award className="mx-auto mb-4 text-gray-600" size={64} />
-            <h2 className="text-2xl font-bold text-white mb-2">Aucun badge pour le moment</h2>
-            <p className="text-gray-400">
-              Continuez à jouer et à voter pour débloquer vos premiers badges !
-            </p>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
+  )
+}
+
+export default function BadgesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-yellow-900 to-slate-900 flex items-center justify-center">
+        <Loader className="text-white animate-spin" size={48} />
+      </div>
+    }>
+      <BadgesContent />
+    </Suspense>
   )
 }

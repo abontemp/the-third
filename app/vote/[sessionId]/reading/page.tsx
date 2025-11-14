@@ -93,8 +93,7 @@ export default function ReadingPage() {
           include_worst_action,
           matches (
             opponent,
-            match_date,
-            season_id
+            match_date
           )
         `)
         .eq('id', sessionId)
@@ -108,20 +107,12 @@ export default function ReadingPage() {
 
       const matchData = Array.isArray(sessionData.matches) ? sessionData.matches[0] : sessionData.matches
 
-      // Si pas de team_id dans localStorage, fallback sur la saison
+      // Si toujours pas de team_id, on ne peut pas continuer
       if (!savedTeamId) {
-        const { data: seasonData } = await supabase
-          .from('seasons')
-          .select('team_id')
-          .eq('id', matchData?.season_id)
-          .single()
-
-        if (seasonData?.team_id) {
-          setTeamId(seasonData.team_id)
-          console.log('✅ Team ID récupéré depuis saison (fallback):', seasonData.team_id)
-        } else {
-          console.error('❌ Impossible de récupérer le team_id')
-        }
+        console.error('❌ Impossible de récupérer le team_id')
+        alert('Erreur: impossible de déterminer l\'équipe')
+        router.push('/dashboard')
+        return
       }
 
       // Vérifier si l'utilisateur est manager
