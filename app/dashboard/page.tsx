@@ -167,9 +167,27 @@ export default function DashboardPage() {
 
       setTeams(teamsData)
       
-      // Sélectionner automatiquement la première équipe
-      if (teamsData.length > 0) {
-        setSelectedTeam(teamsData[0])
+      // Récupérer l'équipe sélectionnée depuis le localStorage
+      const savedTeamId = localStorage.getItem('selectedTeamId')
+      
+      if (savedTeamId) {
+        // Vérifier que l'équipe sauvegardée existe toujours
+        const savedTeam = teamsData.find(t => t.id === savedTeamId)
+        if (savedTeam) {
+          setSelectedTeam(savedTeam)
+        } else {
+          // Si l'équipe n'existe plus, sélectionner la première
+          if (teamsData.length > 0) {
+            setSelectedTeam(teamsData[0])
+            localStorage.setItem('selectedTeamId', teamsData[0].id)
+          }
+        }
+      } else {
+        // Pas d'équipe sauvegardée, sélectionner la première
+        if (teamsData.length > 0) {
+          setSelectedTeam(teamsData[0])
+          localStorage.setItem('selectedTeamId', teamsData[0].id)
+        }
       }
 
     } catch (error) {
@@ -524,7 +542,11 @@ export default function DashboardPage() {
               {teams.map(team => (
                 <button
                   key={team.id}
-                  onClick={() => setSelectedTeam(team)}
+                  onClick={() => {
+                    setSelectedTeam(team)
+                    // Sauvegarder l'équipe sélectionnée dans localStorage
+                    localStorage.setItem('selectedTeamId', team.id)
+                  }}
                   className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-white/10 hover:border-blue-500/50 rounded-xl p-6 text-left transition group"
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -895,7 +917,11 @@ export default function DashboardPage() {
 
           {teams.length > 1 && (
             <button
-              onClick={() => setSelectedTeam(null)}
+              onClick={() => {
+                setSelectedTeam(null)
+                // Effacer la sélection du localStorage pour forcer le choix
+                localStorage.removeItem('selectedTeamId')
+              }}
               className="bg-slate-700/50 hover:bg-slate-700/70 border border-white/10 hover:border-purple-500/50 text-white py-4 px-6 rounded-xl font-semibold transition flex items-center justify-center gap-3"
             >
               <RefreshCw size={24} />
