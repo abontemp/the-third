@@ -155,40 +155,62 @@ export default function DashboardPage() {
     if (!selectedTeam) return
 
     try {
-      // Charger les sessions actives
-      const { data: matches } = await supabase
+      console.log('🔍 Chargement des données pour l\'équipe:', selectedTeam.id)
+      
+      // Charger tous les matchs de l'équipe
+      const { data: matches, error: matchesError } = await supabase
         .from('matches')
-        .select(`
-          id,
-          opponent,
-          match_date,
-          location,
-          voting_sessions (
-            id,
-            status
-          )
-        `)
+        .select('id, opponent, match_date, location, team_id')
         .eq('team_id', selectedTeam.id)
         .order('match_date', { ascending: false })
 
-      const sessions: VotingSession[] = []
-      matches?.forEach((match: any) => {
-        match.voting_sessions?.forEach((session: any) => {
-          if (session.status !== 'completed') {
-            sessions.push({
+      console.log('Matches trouvés:', matches)
+      console.log('Matches error:', matchesError)
+
+      if (!matches || matches.length === 0) {
+        console.log('Aucun match trouvé')
+        setActiveSessions([])
+      } else {
+        // Récupérer toutes les sessions pour ces matchs
+        const matchIds = matches.map(m => m.id)
+        const { data: votingSessions, error: sessionsError } = await supabase
+          .from('voting_sessions')
+          .select('id, match_id, status')
+          .in('match_id', matchIds)
+          .neq('status', 'completed')
+
+        console.log('Sessions de vote trouvées:', votingSessions)
+        console.log('Sessions error:', sessionsError)
+
+        if (!votingSessions || votingSessions.length === 0) {
+          console.log('Aucune session active')
+          setActiveSessions([])
+        } else {
+          // Créer une map des matchs
+          const matchesMap: Record<string, any> = {}
+          matches.forEach(m => {
+            matchesMap[m.id] = m
+          })
+
+          // Combiner les données
+          const sessions: VotingSession[] = votingSessions.map((session: any) => {
+            const match = matchesMap[session.match_id]
+            return {
               id: session.id,
-              match_id: match.id,
+              match_id: session.match_id,
               status: session.status,
               matches: {
-                opponent: match.opponent,
-                match_date: match.match_date,
-                location: match.location
+                opponent: match?.opponent || 'Inconnu',
+                match_date: match?.match_date || new Date().toISOString(),
+                location: match?.location || null
               }
-            })
-          }
-        })
-      })
-      setActiveSessions(sessions)
+            }
+          })
+
+          console.log('Sessions finales:', sessions)
+          setActiveSessions(sessions)
+        }
+      }
 
       // Charger les membres
       const { data: teamMembers, error: membersError } = await supabase
