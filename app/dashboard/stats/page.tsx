@@ -40,28 +40,57 @@ export default function StatsPage() {
       console.log('✅ Utilisateur trouvé:', user.id)
 
       // Récupérer mon équipe
-      const { data: membership } = await supabase
+      const { data: membership, error: membershipError } = await supabase
         .from('team_members')
         .select('team_id')
         .eq('user_id', user.id)
-        .single()
+        .maybeSingle()
+
+      if (membershipError) {
+        console.error('❌ Erreur membership:', membershipError)
+      }
 
       if (!membership) {
         console.log('❌ Pas de membership trouvé')
+        setLoading(false)
         return
       }
       console.log('✅ Équipe trouvée:', membership.team_id)
 
-      // Récupérer tous les matchs de l'équipe
-      const { data: matches } = await supabase
-        .from('matches')
-        .select('id, team_id')
+      // Récupérer toutes les saisons de l'équipe
+      const { data: seasons, error: seasonsError } = await supabase
+        .from('seasons')
+        .select('id')
         .eq('team_id', membership.team_id)
+
+      if (seasonsError) {
+        console.error('❌ Erreur seasons:', seasonsError)
+      }
+
+      const seasonIds = seasons?.map(s => s.id) || []
+      console.log(`✅ ${seasonIds.length} saisons trouvées`)
+
+      if (seasonIds.length === 0) {
+        console.log('⚠️ Aucune saison trouvée pour cette équipe')
+        setLoading(false)
+        return
+      }
+
+      // Récupérer tous les matchs de ces saisons
+      const { data: matches, error: matchesError } = await supabase
+        .from('matches')
+        .select('id')
+        .in('season_id', seasonIds)
+
+      if (matchesError) {
+        console.error('❌ Erreur matches:', matchesError)
+      }
 
       const matchIds = matches?.map(m => m.id) || []
       console.log(`✅ ${matchIds.length} matchs trouvés`)
 
       if (matchIds.length === 0) {
+        console.log('⚠️ Aucun match trouvé pour ces saisons')
         setLoading(false)
         return
       }
