@@ -373,6 +373,13 @@ export default function DashboardPage() {
     }
   }
 
+  const getReaderName = (userId: string | undefined): string => {
+    if (!userId) return 'Non assigné'
+    
+    const member = members.find(m => m.user_id === userId)
+    return member?.display_name || 'Inconnu'
+  }
+
   const handleExpandSession = async (sessionId: string) => {
     if (expandedSession === sessionId) {
       setExpandedSession(null)
@@ -685,6 +692,18 @@ export default function DashboardPage() {
                               year: 'numeric'
                             })}
                           </p>
+                          
+                          {/* Affichage des lecteurs si status = reading */}
+                          {session.status === 'reading' && (
+                            <div className="mt-2 space-y-1">
+                              <p className="text-xs text-purple-400">
+                                🎤 Lecteur TOP : <span className="font-semibold">{getReaderName(session.top_reader_id)}</span>
+                              </p>
+                              <p className="text-xs text-purple-400">
+                                🎤 Lecteur FLOP : <span className="font-semibold">{getReaderName(session.flop_reader_id)}</span>
+                              </p>
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-3">
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusInfo.color}`}>
