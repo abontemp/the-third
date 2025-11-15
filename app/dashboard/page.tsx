@@ -22,7 +22,7 @@ type Team = {
 type VotingSession = {
   id: string
   match_id: string
-  status: 'pending' | 'in_progress' | 'reading' | 'completed'
+  status: 'open' |'pending' | 'in_progress' | 'reading' | 'completed'
   flop_reader_id?: string
   top_reader_id?: string
   matches: {
@@ -676,7 +676,7 @@ export default function DashboardPage() {
 
                       <div className="flex items-center gap-2 flex-wrap">
                         {/* Bouton voter/voir résultats */}
-                        {session.status === 'in_progress' && session.is_participant && (
+{(session.status === 'open' || session.status === 'pending' || session.status === 'in_progress') && session.is_participant && (
                           session.has_voted ? (
                             <div className="flex items-center gap-2 text-green-400 text-sm">
                               <CheckCircle size={16} />
@@ -715,7 +715,7 @@ export default function DashboardPage() {
                               {isExpanded ? 'Masquer' : 'Gérer'}
                             </button>
                             
-                            {session.status === 'in_progress' && (
+                            {(session.status === 'open' || session.status === 'in_progress') && (
                               <button
                                 onClick={() => handleCloseVoting(session)}
                                 disabled={closingSession === session.id}
