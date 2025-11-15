@@ -6,7 +6,7 @@ import {
   Plus, Loader, Users, History, BarChart3, 
   ArrowRight, Trophy, MessageSquareQuote, Swords, Target,
   Award, Calendar, TrendingUp, UserPlus, RefreshCw, Trash2,
-  CheckCircle, Play, AlertCircle, Clock
+  CheckCircle, Play, AlertCircle, Clock, LogOut
 } from 'lucide-react'
 
 type Team = {
@@ -487,6 +487,16 @@ export default function DashboardPage() {
     }
   }
 
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut()
+      router.push('/login')
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion:', error)
+      alert('Erreur lors de la déconnexion')
+    }
+  }
+
   const getStatusInfo = (session: VotingSession) => {
     if (session.status === 'reading') {
       const isTopReader = session.top_reader_id === currentUserId
@@ -613,6 +623,15 @@ export default function DashboardPage() {
                   {currentUserName ? currentUserName[0].toUpperCase() : 'U'}
                 </div>
                 <span className="text-white text-sm font-medium">{currentUserName}</span>
+              </button>
+              
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 hover:text-red-300 px-4 py-2 rounded-lg border border-red-500/30 hover:border-red-500/50 transition"
+                title="Se déconnecter"
+              >
+                <LogOut size={18} />
+                <span className="hidden sm:inline text-sm font-medium">Déconnexion</span>
               </button>
             </div>
           </div>

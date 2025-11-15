@@ -2,20 +2,24 @@
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Loader, TrendingUp, TrendingDown, Sparkles, Flame, Trophy, Target } from 'lucide-react'
+import { ArrowLeft, Loader, TrendingUp, TrendingDown, Sparkles, Flame, Trophy, Target, Mic } from 'lucide-react'
 
 type PodiumResult = {
   player_id: string
   player_name: string
   vote_count: number
   percentage: number
+  rank: number // Position réelle basée sur le nombre de votes (1, 2, 3...)
 }
 
 type VotingSession = {
   id: string
+  status: string
   include_predictions: boolean
   include_best_action: boolean
   include_worst_action: boolean
+  top_reader_id?: string
+  flop_reader_id?: string
   match: {
     opponent: string
     match_date: string
@@ -35,6 +39,8 @@ export default function ResultsPage() {
   const [flopResults, setFlopResults] = useState<PodiumResult[]>([])
   const [bestActionResults, setBestActionResults] = useState<PodiumResult[]>([])
   const [worstActionResults, setWorstActionResults] = useState<PodiumResult[]>([])
+  const [topReaderName, setTopReaderName] = useState<string>('')
+  const [flopReaderName, setFlopReaderName] = useState<string>('')
   const [predictionStats, setPredictionStats] = useState<{
     top_correct: number
     flop_correct: number
@@ -55,9 +61,12 @@ export default function ResultsPage() {
         .from('voting_sessions')
         .select(`
           id,
+          status,
           include_predictions,
           include_best_action,
           include_worst_action,
+          top_reader_id,
+          flop_reader_id,
           match:match_id(opponent, match_date)
         `)
         .eq('id', sessionId)
@@ -71,9 +80,12 @@ export default function ResultsPage() {
 
       const sessionFormatted: VotingSession = {
         id: sessionData.id,
+        status: sessionData.status,
         include_predictions: sessionData.include_predictions,
         include_best_action: sessionData.include_best_action,
         include_worst_action: sessionData.include_worst_action,
+        top_reader_id: sessionData.top_reader_id,
+        flop_reader_id: sessionData.flop_reader_id,
         match: Array.isArray(sessionData.match) ? sessionData.match[0] : sessionData.match
       }
 
@@ -100,6 +112,10 @@ export default function ResultsPage() {
         if (vote.best_action_player_id) allPlayerIds.add(vote.best_action_player_id)
         if (vote.worst_action_player_id) allPlayerIds.add(vote.worst_action_player_id)
       })
+      
+      // Ajouter les lecteurs
+      if (sessionData.top_reader_id) allPlayerIds.add(sessionData.top_reader_id)
+      if (sessionData.flop_reader_id) allPlayerIds.add(sessionData.flop_reader_id)
 
       const { data: profilesData } = await supabase
         .from('profiles')
@@ -120,7 +136,30 @@ export default function ResultsPage() {
         return 'Inconnu'
       }
 
-      // Calculer les résultats TOP
+      // Récupérer les noms des lecteurs
+      if (sessionData.top_reader_id) {
+        setTopReaderName(getDisplayName(sessionData.top_reader_id))
+      }
+      if (sessionData.flop_reader_id) {
+        setFlopReaderName(getDisplayName(sessionData.flop_reader_id))
+      }
+
+      // 🎯 NOUVELLE FONCTION : Assigner les rangs avec gestion des ex-aequo
+      const assignRanks = (results: { player_id: string; player_name: string; vote_count: number; percentage: number }[]): PodiumResult[] => {
+        let currentRank = 1
+        return results.map((result, index) => {
+          // Si ce n'est pas le premier et que le nombre de votes est différent du précédent, incrémenter le rang
+          if (index > 0 && result.vote_count !== results[index - 1].vote_count) {
+            currentRank = index + 1
+          }
+          return {
+            ...result,
+            rank: currentRank
+          }
+        })
+      }
+
+      // Calculer les résultats TOP avec rangs
       const topVotes: Record<string, number> = {}
       votesData.forEach(vote => {
         topVotes[vote.top_player_id] = (topVotes[vote.top_player_id] || 0) + 1
@@ -133,10 +172,11 @@ export default function ResultsPage() {
           percentage: Math.round((count / votesData.length) * 100)
         }))
         .sort((a, b) => b.vote_count - a.vote_count)
-        .slice(0, 3)
-      setTopResults(topSorted)
+      
+      const topWithRanks = assignRanks(topSorted).filter(r => r.rank <= 3)
+      setTopResults(topWithRanks)
 
-      // Calculer les résultats FLOP
+      // Calculer les résultats FLOP avec rangs
       const flopVotes: Record<string, number> = {}
       votesData.forEach(vote => {
         flopVotes[vote.flop_player_id] = (flopVotes[vote.flop_player_id] || 0) + 1
@@ -149,8 +189,9 @@ export default function ResultsPage() {
           percentage: Math.round((count / votesData.length) * 100)
         }))
         .sort((a, b) => b.vote_count - a.vote_count)
-        .slice(0, 3)
-      setFlopResults(flopSorted)
+      
+      const flopWithRanks = assignRanks(flopSorted).filter(r => r.rank <= 3)
+      setFlopResults(flopWithRanks)
 
       // Calculer les résultats Plus beau geste
       if (sessionFormatted.include_best_action) {
@@ -168,8 +209,9 @@ export default function ResultsPage() {
             percentage: Math.round((count / votesData.length) * 100)
           }))
           .sort((a, b) => b.vote_count - a.vote_count)
-          .slice(0, 3)
-        setBestActionResults(bestActionSorted)
+        
+        const bestActionWithRanks = assignRanks(bestActionSorted).filter(r => r.rank <= 3)
+        setBestActionResults(bestActionWithRanks)
       }
 
       // Calculer les résultats Plus beau fail
@@ -188,14 +230,15 @@ export default function ResultsPage() {
             percentage: Math.round((count / votesData.length) * 100)
           }))
           .sort((a, b) => b.vote_count - a.vote_count)
-          .slice(0, 3)
-        setWorstActionResults(worstActionSorted)
+        
+        const worstActionWithRanks = assignRanks(worstActionSorted).filter(r => r.rank <= 3)
+        setWorstActionResults(worstActionWithRanks)
       }
 
       // Calculer les stats des prédictions
-      if (sessionFormatted.include_predictions && topSorted.length > 0 && flopSorted.length > 0) {
-        const topWinner = topSorted[0].player_id
-        const flopWinner = flopSorted[0].player_id
+      if (sessionFormatted.include_predictions && topWithRanks.length > 0 && flopWithRanks.length > 0) {
+        const topWinner = topWithRanks[0].player_id
+        const flopWinner = flopWithRanks[0].player_id
         
         let topCorrect = 0
         let flopCorrect = 0
@@ -230,22 +273,82 @@ export default function ResultsPage() {
     }
   }
 
-  const getMedalColor = (index: number) => {
-    if (index === 0) return 'from-yellow-500 to-yellow-600'
-    if (index === 1) return 'from-gray-400 to-gray-500'
+  const getMedalColor = (rank: number) => {
+    if (rank === 1) return 'from-yellow-500 to-yellow-600'
+    if (rank === 2) return 'from-gray-400 to-gray-500'
     return 'from-orange-600 to-orange-700'
   }
 
-  const getPodiumHeight = (index: number) => {
-    if (index === 0) return 'h-48'
-    if (index === 1) return 'h-40'
+  const getPodiumHeight = (rank: number) => {
+    if (rank === 1) return 'h-48'
+    if (rank === 2) return 'h-40'
     return 'h-32'
   }
 
-  const getPodiumOrder = (index: number) => {
-    if (index === 0) return 'order-2'
-    if (index === 1) return 'order-1'
-    return 'order-3'
+  // 🎯 NOUVELLE FONCTION : Grouper les résultats par rang
+  const groupByRank = (results: PodiumResult[]) => {
+    const grouped: Record<number, PodiumResult[]> = {}
+    results.forEach(result => {
+      if (!grouped[result.rank]) {
+        grouped[result.rank] = []
+      }
+      grouped[result.rank].push(result)
+    })
+    return grouped
+  }
+
+  // 🎯 NOUVEAU COMPOSANT : Podium avec ex-aequo
+  const PodiumWithTies = ({ results, color }: { results: PodiumResult[], color: string }) => {
+    const grouped = groupByRank(results)
+    const ranks = Object.keys(grouped).map(Number).sort()
+
+    return (
+      <div className="flex items-end justify-center gap-4 mb-8">
+        {ranks.map(rank => {
+          const playersAtRank = grouped[rank]
+          const podiumOrder = rank === 1 ? 'order-2' : rank === 2 ? 'order-1' : 'order-3'
+          
+          return (
+            <div
+              key={rank}
+              className={`flex flex-col items-center ${podiumOrder}`}
+              style={{ minWidth: playersAtRank.length > 1 ? `${200 * playersAtRank.length}px` : '200px' }}
+            >
+              {/* Médaille(s) */}
+              <div className="flex gap-2 mb-4 justify-center">
+                {playersAtRank.map((player) => (
+                  <div
+                    key={player.player_id}
+                    className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(rank)} flex items-center justify-center text-white font-bold text-2xl shadow-lg`}
+                  >
+                    {rank}
+                  </div>
+                ))}
+              </div>
+
+              {/* Noms et stats */}
+              <div className="flex gap-2 mb-4 w-full">
+                {playersAtRank.map((player) => (
+                  <div
+                    key={player.player_id}
+                    className="bg-slate-800/50 rounded-lg p-4 flex-1 text-center"
+                  >
+                    <p className="font-bold text-white text-base mb-2 break-words">{player.player_name}</p>
+                    <p className={`${color} text-2xl font-bold`}>{player.vote_count} votes</p>
+                    <p className="text-gray-400 text-sm">{player.percentage}%</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Colonne du podium */}
+              <div className={`w-full ${getPodiumHeight(rank)} bg-gradient-to-t ${getMedalColor(rank)} rounded-t-xl flex items-center justify-center transition-all duration-500`}>
+                <span className="text-white font-bold text-4xl">{rank}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
   if (loading) {
@@ -300,6 +403,36 @@ export default function ResultsPage() {
           </p>
         </div>
 
+        {/* 🎤 NOUVEAU : Lecteurs désignés */}
+        {session.status === 'reading' && (topReaderName || flopReaderName) && (
+          <div className="bg-gradient-to-br from-purple-900/40 to-pink-900/40 border border-purple-500/40 rounded-2xl p-6 mb-8">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <Mic className="text-purple-400" size={32} />
+              <h2 className="text-2xl font-bold text-white">Lecteurs désignés</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {topReaderName && (
+                <div className="bg-slate-800/50 rounded-xl p-6 text-center border-2 border-green-500/30">
+                  <p className="text-gray-400 mb-2">Lecteur TOP</p>
+                  <div className="flex items-center justify-center gap-3">
+                    <TrendingUp className="text-green-400" size={24} />
+                    <p className="text-2xl font-bold text-white">{topReaderName}</p>
+                  </div>
+                </div>
+              )}
+              {flopReaderName && (
+                <div className="bg-slate-800/50 rounded-xl p-6 text-center border-2 border-red-500/30">
+                  <p className="text-gray-400 mb-2">Lecteur FLOP</p>
+                  <div className="flex items-center justify-center gap-3">
+                    <TrendingDown className="text-red-400" size={24} />
+                    <p className="text-2xl font-bold text-white">{flopReaderName}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-12">
           {/* Stats des prédictions */}
           {session.include_predictions && predictionStats.total_predictions > 0 && (
@@ -343,7 +476,7 @@ export default function ResultsPage() {
             </div>
           )}
 
-          {/* Podium TOP */}
+          {/* Podium TOP avec ex-aequo */}
           <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-2xl p-8">
             <div className="flex items-center justify-center gap-3 mb-8">
               <TrendingUp className="text-green-400" size={32} />
@@ -351,38 +484,13 @@ export default function ResultsPage() {
             </div>
 
             {topResults.length > 0 ? (
-              <div className="flex items-end justify-center gap-4 mb-8">
-                {topResults.map((result, index) => (
-                  <div
-                    key={result.player_id}
-                    className={`flex flex-col items-center ${getPodiumOrder(index)}`}
-                    style={{ width: '200px' }}
-                  >
-                    {/* Médaille */}
-                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(index)} flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg`}>
-                      {index + 1}
-                    </div>
-
-                    {/* Nom et stats */}
-                    <div className="bg-slate-800/50 rounded-lg p-4 w-full text-center mb-4">
-                      <p className="font-bold text-white text-lg mb-2">{result.player_name}</p>
-                      <p className="text-green-400 text-2xl font-bold">{result.vote_count} votes</p>
-                      <p className="text-gray-400 text-sm">{result.percentage}%</p>
-                    </div>
-
-                    {/* Colonne du podium */}
-                    <div className={`w-full ${getPodiumHeight(index)} bg-gradient-to-t ${getMedalColor(index)} rounded-t-xl flex items-center justify-center transition-all duration-500`}>
-                      <span className="text-white font-bold text-4xl">{index + 1}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <PodiumWithTies results={topResults} color="text-green-400" />
             ) : (
               <p className="text-center text-gray-400">Aucun vote enregistré</p>
             )}
           </div>
 
-          {/* Podium FLOP */}
+          {/* Podium FLOP avec ex-aequo */}
           <div className="bg-gradient-to-br from-red-900/30 to-orange-900/30 border border-red-500/30 rounded-2xl p-8">
             <div className="flex items-center justify-center gap-3 mb-8">
               <TrendingDown className="text-red-400" size={32} />
@@ -390,38 +498,13 @@ export default function ResultsPage() {
             </div>
 
             {flopResults.length > 0 ? (
-              <div className="flex items-end justify-center gap-4 mb-8">
-                {flopResults.map((result, index) => (
-                  <div
-                    key={result.player_id}
-                    className={`flex flex-col items-center ${getPodiumOrder(index)}`}
-                    style={{ width: '200px' }}
-                  >
-                    {/* Médaille */}
-                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(index)} flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg`}>
-                      {index + 1}
-                    </div>
-
-                    {/* Nom et stats */}
-                    <div className="bg-slate-800/50 rounded-lg p-4 w-full text-center mb-4">
-                      <p className="font-bold text-white text-lg mb-2">{result.player_name}</p>
-                      <p className="text-red-400 text-2xl font-bold">{result.vote_count} votes</p>
-                      <p className="text-gray-400 text-sm">{result.percentage}%</p>
-                    </div>
-
-                    {/* Colonne du podium */}
-                    <div className={`w-full ${getPodiumHeight(index)} bg-gradient-to-t ${getMedalColor(index)} rounded-t-xl flex items-center justify-center transition-all duration-500`}>
-                      <span className="text-white font-bold text-4xl">{index + 1}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <PodiumWithTies results={flopResults} color="text-red-400" />
             ) : (
               <p className="text-center text-gray-400">Aucun vote enregistré</p>
             )}
           </div>
 
-          {/* Podium Plus beau geste */}
+          {/* Podium Plus beau geste avec ex-aequo */}
           {session.include_best_action && bestActionResults.length > 0 && (
             <div className="bg-gradient-to-br from-blue-900/30 to-cyan-900/30 border border-blue-500/30 rounded-2xl p-8">
               <div className="flex items-center justify-center gap-3 mb-8">
@@ -429,31 +512,11 @@ export default function ResultsPage() {
                 <h2 className="text-3xl font-bold text-white">Plus beau geste</h2>
               </div>
 
-              <div className="flex items-end justify-center gap-4 mb-8">
-                {bestActionResults.map((result, index) => (
-                  <div
-                    key={result.player_id}
-                    className={`flex flex-col items-center ${getPodiumOrder(index)}`}
-                    style={{ width: '200px' }}
-                  >
-                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(index)} flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg`}>
-                      {index + 1}
-                    </div>
-                    <div className="bg-slate-800/50 rounded-lg p-4 w-full text-center mb-4">
-                      <p className="font-bold text-white text-lg mb-2">{result.player_name}</p>
-                      <p className="text-blue-400 text-2xl font-bold">{result.vote_count} votes</p>
-                      <p className="text-gray-400 text-sm">{result.percentage}%</p>
-                    </div>
-                    <div className={`w-full ${getPodiumHeight(index)} bg-gradient-to-t ${getMedalColor(index)} rounded-t-xl flex items-center justify-center transition-all duration-500`}>
-                      <span className="text-white font-bold text-4xl">{index + 1}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <PodiumWithTies results={bestActionResults} color="text-blue-400" />
             </div>
           )}
 
-          {/* Podium Plus beau fail */}
+          {/* Podium Plus beau fail avec ex-aequo */}
           {session.include_worst_action && worstActionResults.length > 0 && (
             <div className="bg-gradient-to-br from-orange-900/30 to-amber-900/30 border border-orange-500/30 rounded-2xl p-8">
               <div className="flex items-center justify-center gap-3 mb-8">
@@ -461,27 +524,7 @@ export default function ResultsPage() {
                 <h2 className="text-3xl font-bold text-white">Plus beau fail</h2>
               </div>
 
-              <div className="flex items-end justify-center gap-4 mb-8">
-                {worstActionResults.map((result, index) => (
-                  <div
-                    key={result.player_id}
-                    className={`flex flex-col items-center ${getPodiumOrder(index)}`}
-                    style={{ width: '200px' }}
-                  >
-                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(index)} flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg`}>
-                      {index + 1}
-                    </div>
-                    <div className="bg-slate-800/50 rounded-lg p-4 w-full text-center mb-4">
-                      <p className="font-bold text-white text-lg mb-2">{result.player_name}</p>
-                      <p className="text-orange-400 text-2xl font-bold">{result.vote_count} votes</p>
-                      <p className="text-gray-400 text-sm">{result.percentage}%</p>
-                    </div>
-                    <div className={`w-full ${getPodiumHeight(index)} bg-gradient-to-t ${getMedalColor(index)} rounded-t-xl flex items-center justify-center transition-all duration-500`}>
-                      <span className="text-white font-bold text-4xl">{index + 1}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <PodiumWithTies results={worstActionResults} color="text-orange-400" />
             </div>
           )}
         </div>
