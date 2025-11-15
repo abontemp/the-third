@@ -506,7 +506,7 @@ export default function DashboardPage() {
       }
     }
     
-    if (session.status === 'in_progress') {
+    if (session.status === 'in_progress' || session.status === 'open') {
       return {
         label: 'Vote en cours',
         color: 'bg-green-500/20 text-green-300 border-green-500/30',
@@ -675,20 +675,23 @@ export default function DashboardPage() {
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
-                        {/* Bouton voter/voir résultats */}
-{(session.status === 'open' || session.status === 'pending' || session.status === 'in_progress') && session.is_participant && (
+                        {/* Bouton voter - NOUVEAU STYLE */}
+                        {(session.status === 'open' || session.status === 'pending' || session.status === 'in_progress') && session.is_participant && (
                           session.has_voted ? (
-                            <div className="flex items-center gap-2 text-green-400 text-sm">
-                              <CheckCircle size={16} />
-                              <span>Vous avez voté</span>
+                            <div className="flex items-center gap-2 text-green-400 font-semibold">
+                              <CheckCircle size={20} />
+                              <span>✅ Vous avez voté</span>
                             </div>
                           ) : (
                             <button
-                              onClick={() => router.push(`/vote/${session.id}`)}
-                              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
+                              onClick={() => {
+                                console.log('🗳️ Redirection vers vote:', session.id)
+                                router.push(`/vote/${session.id}`)
+                              }}
+                              className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white px-6 py-3 rounded-lg font-bold transition flex items-center gap-2 shadow-lg animate-pulse"
                             >
-                              <Play size={16} />
-                              Voter maintenant
+                              <Play size={20} />
+                              🗳️ Voter maintenant
                             </button>
                           )
                         )}
@@ -704,57 +707,69 @@ export default function DashboardPage() {
                           </button>
                         )}
 
-                        {/* Gestion manager */}
+                        {/* Bouton Gérer (Manager seulement) */}
                         {isManager && (
-                          <>
-                            <button
-                              onClick={() => handleExpandSession(session.id)}
-                              className="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
-                            >
-                              <Users size={16} />
-                              {isExpanded ? 'Masquer' : 'Gérer'}
-                            </button>
-                            
-                            {(session.status === 'open' || session.status === 'in_progress') && (
-                              <button
-                                onClick={() => handleCloseVoting(session)}
-                                disabled={closingSession === session.id}
-                                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
-                              >
-                                {closingSession === session.id ? (
-                                  <Loader size={16} className="animate-spin" />
-                                ) : (
-                                  <Clock size={16} />
-                                )}
-                                Clôturer
-                              </button>
-                            )}
-                          </>
+                          <button
+                            onClick={() => handleExpandSession(session.id)}
+                            className="bg-slate-600 hover:bg-slate-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
+                          >
+                            <Users size={16} />
+                            {isExpanded ? 'Masquer' : 'Gérer'}
+                          </button>
                         )}
                       </div>
                     </div>
 
-                    {/* Participants expanded */}
-                    {isExpanded && participants && (
+                    {/* Section étendue - Participants + Bouton Clôturer */}
+                    {isExpanded && (
                       <div className="border-t border-white/10 p-4 bg-slate-800/30">
-                        <h4 className="text-white font-semibold mb-3">
-                          Participants ({participants.filter(p => p.has_voted).length}/{participants.length})
-                        </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {participants.map(p => (
-                            <div 
-                              key={p.id}
-                              className="flex items-center justify-between bg-slate-700/30 rounded-lg p-2"
-                            >
-                              <span className="text-white text-sm">{p.display_name}</span>
-                              {p.has_voted ? (
-                                <CheckCircle className="text-green-400" size={16} />
-                              ) : (
-                                <Clock className="text-gray-400" size={16} />
-                              )}
+                        {participants ? (
+                          <>
+                            <h4 className="text-white font-semibold mb-3">
+                              Participants ({participants.filter(p => p.has_voted).length}/{participants.length})
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+                              {participants.map(p => (
+                                <div 
+                                  key={p.id}
+                                  className="flex items-center justify-between bg-slate-700/30 rounded-lg p-2"
+                                >
+                                  <span className="text-white text-sm">{p.display_name}</span>
+                                  {p.has_voted ? (
+                                    <CheckCircle className="text-green-400" size={16} />
+                                  ) : (
+                                    <Clock className="text-gray-400" size={16} />
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+
+                            {/* Bouton Clôturer - DÉPLACÉ ICI */}
+                            {(session.status === 'open' || session.status === 'in_progress') && (
+                              <button
+                                onClick={() => handleCloseVoting(session)}
+                                disabled={closingSession === session.id}
+                                className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+                              >
+                                {closingSession === session.id ? (
+                                  <>
+                                    <Loader size={18} className="animate-spin" />
+                                    <span>Clôture en cours...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock size={18} />
+                                    <span>Clôturer le vote</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <div className="flex items-center justify-center py-4">
+                            <Loader className="animate-spin text-blue-400" size={24} />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
