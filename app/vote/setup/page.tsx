@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Send, AlertCircle, CheckCircle, Loader } from 'lucide-react'
+import { ArrowLeft, Send, AlertCircle, CheckCircle, Loader, Sparkles, Target } from 'lucide-react'
 
 type TeamMember = {
   id: string
@@ -34,7 +34,9 @@ export default function VoteSetupPage() {
     opponent: '',
     matchDate: new Date().toISOString().split('T')[0], // Date du jour par défaut
     location: '',
-    selectedMembers: [] as string[]
+    selectedMembers: [] as string[],
+    enablePredictions: false,
+    enableBestMove: false
   })
 
   useEffect(() => {
@@ -240,7 +242,9 @@ export default function VoteSetupPage() {
         .from('voting_sessions')
         .insert([{
           match_id: match.id,
-          status: 'open'
+          status: 'open',
+          enable_predictions: formData.enablePredictions,
+          enable_best_move: formData.enableBestMove
         }])
         .select()
         .single()
@@ -386,6 +390,74 @@ export default function VoteSetupPage() {
                     />
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Fonctionnalités supplémentaires */}
+            <div>
+              <h2 className="text-xl font-semibold text-white mb-4">Fonctionnalités du vote</h2>
+              <p className="text-sm text-gray-400 mb-4">Activez des options supplémentaires pour enrichir votre session de vote</p>
+              
+              <div className="space-y-3">
+                {/* Toggle Prédictions */}
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, enablePredictions: !formData.enablePredictions })}
+                  className={`w-full flex items-center justify-between p-4 rounded-lg border-2 transition-all ${
+                    formData.enablePredictions
+                      ? 'bg-purple-500/20 border-purple-500 ring-2 ring-purple-500/30'
+                      : 'bg-slate-700/30 border-white/10 hover:border-white/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                      formData.enablePredictions ? 'bg-purple-500' : 'bg-slate-600'
+                    }`}>
+                      <Target className="text-white" size={24} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-white font-semibold">Prédictions</p>
+                      <p className="text-sm text-gray-400">Les joueurs peuvent prédire qui sera TOP et FLOP avant le vote</p>
+                    </div>
+                  </div>
+                  <div className={`w-14 h-8 rounded-full relative transition-all ${
+                    formData.enablePredictions ? 'bg-purple-500' : 'bg-slate-600'
+                  }`}>
+                    <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${
+                      formData.enablePredictions ? 'right-1' : 'left-1'
+                    }`} />
+                  </div>
+                </button>
+
+                {/* Toggle Plus beau geste */}
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, enableBestMove: !formData.enableBestMove })}
+                  className={`w-full flex items-center justify-between p-4 rounded-lg border-2 transition-all ${
+                    formData.enableBestMove
+                      ? 'bg-amber-500/20 border-amber-500 ring-2 ring-amber-500/30'
+                      : 'bg-slate-700/30 border-white/10 hover:border-white/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                      formData.enableBestMove ? 'bg-amber-500' : 'bg-slate-600'
+                    }`}>
+                      <Sparkles className="text-white" size={24} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-white font-semibold">Plus beau geste</p>
+                      <p className="text-sm text-gray-400">Votez également pour le plus beau geste du match</p>
+                    </div>
+                  </div>
+                  <div className={`w-14 h-8 rounded-full relative transition-all ${
+                    formData.enableBestMove ? 'bg-amber-500' : 'bg-slate-600'
+                  }`}>
+                    <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${
+                      formData.enableBestMove ? 'right-1' : 'left-1'
+                    }`} />
+                  </div>
+                </button>
               </div>
             </div>
 
