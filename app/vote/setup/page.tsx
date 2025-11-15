@@ -32,7 +32,7 @@ export default function VoteSetupPage() {
   const [formData, setFormData] = useState({
     seasonId: '',
     opponent: '',
-    matchDate: '',
+    matchDate: new Date().toISOString().split('T')[0], // Date du jour par défaut
     location: '',
     selectedMembers: [] as string[]
   })
@@ -366,7 +366,7 @@ export default function VoteSetupPage() {
                       Date du match *
                     </label>
                     <input
-                      type="datetime-local"
+                      type="date"
                       value={formData.matchDate}
                       onChange={(e) => setFormData({ ...formData, matchDate: e.target.value })}
                       className="w-full bg-slate-700/50 border border-white/10 rounded-lg px-4 py-3 text-white"
