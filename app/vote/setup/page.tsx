@@ -51,20 +51,28 @@ export default function VoteSetupPage() {
         return
       }
 
-        // Récupérer toutes les équipes de l'utilisateur
-      const { data: memberships } = await supabase
-        .from('team_members')
-        .select('team_id, role')
-        .eq('user_id', user.id)
-
-      if (!memberships || memberships.length === 0) {
-        setError("Vous ne faites partie d'aucune équipe")
-        router.push('/onboarding')
+        // 🎯 CORRECTION : Récupérer le team_id depuis localStorage (comme le dashboard)
+      const selectedTeamId = localStorage.getItem('selectedTeamId')
+      
+      if (!selectedTeamId) {
+        setError("Aucune équipe sélectionnée")
+        router.push('/dashboard')
         return
       }
 
-      // Prendre la première équipe où l'utilisateur est manager ou créateur
-      const membership = memberships.find(m => m.role === 'creator' || m.role === 'manager') || memberships[0]
+      // Vérifier que l'utilisateur est membre de cette équipe
+      const { data: membership } = await supabase
+        .from('team_members')
+        .select('team_id, role')
+        .eq('user_id', user.id)
+        .eq('team_id', selectedTeamId)
+        .single()
+
+      if (!membership) {
+        setError("Vous ne faites pas partie de cette équipe")
+        router.push('/dashboard')
+        return
+      }
 
       if (membership.role !== 'creator' && membership.role !== 'manager') {
         setError("Vous devez être manager pour créer un match")
