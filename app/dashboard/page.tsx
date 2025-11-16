@@ -64,6 +64,13 @@ export default function DashboardPage() {
   const [currentUserId, setCurrentUserId] = useState<string>('')
   const [activeSessions, setActiveSessions] = useState<VotingSession[]>([])
   const [members, setMembers] = useState<Member[]>([])
+  const [pendingRequests, setPendingRequests] = useState<{
+    id: string
+    user_id: string
+    display_name: string
+    email: string
+    created_at: string
+  }[]>([])
   
   // Modals & actions
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -71,6 +78,7 @@ export default function DashboardPage() {
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [memberHasVotes, setMemberHasVotes] = useState(false)
+  const [processingRequest, setProcessingRequest] = useState<string | null>(null)
   
   // Session management
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
@@ -326,6 +334,44 @@ export default function DashboardPage() {
 
       setMembers(membersData)
 
+      // Charger les demandes d'adhésion en attente (managers seulement)
+      if (selectedTeam.userRole === 'creator' || selectedTeam.userRole === 'manager') {
+        const { data: requestsData } = await supabase
+          .from('join_requests')
+          .select('id, user_id, created_at')
+          .eq('team_id', selectedTeam.id)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true })
+
+        if (requestsData && requestsData.length > 0) {
+          const requestUserIds = requestsData.map(r => r.user_id)
+          const { data: requestProfiles } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name, nickname, email')
+            .in('id', requestUserIds)
+
+          const requestsWithNames = requestsData.map(request => {
+            const profile = requestProfiles?.find(p => p.id === request.user_id)
+            const displayName = profile?.nickname || 
+                              (profile?.first_name && profile?.last_name 
+                                ? `${profile.first_name} ${profile.last_name}` 
+                                : profile?.email || 'Utilisateur inconnu')
+            
+            return {
+              id: request.id,
+              user_id: request.user_id,
+              display_name: displayName,
+              email: profile?.email || '',
+              created_at: request.created_at
+            }
+          })
+
+          setPendingRequests(requestsWithNames)
+        } else {
+          setPendingRequests([])
+        }
+      }
+
     } catch (error) {
       console.error('❌ Erreur lors du chargement des données:', error)
     }
@@ -501,6 +547,62 @@ export default function DashboardPage() {
     } catch (error) {
       console.error('Erreur lors de la déconnexion:', error)
       alert('Erreur lors de la déconnexion')
+    }
+  }
+
+  const handleAcceptRequest = async (requestId: string, userId: string) => {
+    if (!selectedTeam) return
+    
+    setProcessingRequest(requestId)
+    try {
+      // Ajouter le membre à l'équipe
+      const { error: memberError } = await supabase
+        .from('team_members')
+        .insert([{
+          team_id: selectedTeam.id,
+          user_id: userId,
+          role: 'member'
+        }])
+
+      if (memberError) throw memberError
+
+      // Mettre à jour le statut de la demande
+      const { error: requestError } = await supabase
+        .from('join_requests')
+        .update({ status: 'accepted' })
+        .eq('id', requestId)
+
+      if (requestError) throw requestError
+
+      // Recharger les données
+      loadTeamData()
+    } catch (error) {
+      console.error('Erreur lors de l\'acceptation:', error)
+      alert('Erreur lors de l\'acceptation de la demande')
+    } finally {
+      setProcessingRequest(null)
+    }
+  }
+
+  const handleRejectRequest = async (requestId: string) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir rejeter cette demande ?')) return
+    
+    setProcessingRequest(requestId)
+    try {
+      const { error } = await supabase
+        .from('join_requests')
+        .update({ status: 'rejected' })
+        .eq('id', requestId)
+
+      if (error) throw error
+
+      // Recharger les données
+      loadTeamData()
+    } catch (error) {
+      console.error('Erreur lors du rejet:', error)
+      alert('Erreur lors du rejet de la demande')
+    } finally {
+      setProcessingRequest(null)
     }
   }
 
@@ -916,6 +1018,67 @@ export default function DashboardPage() {
             )}
           </div>
 
+          {/* Demandes en attente (Managers seulement) */}
+          {isManager && pendingRequests.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-orange-400 mb-3 flex items-center gap-2">
+                <AlertCircle size={20} />
+                Demandes en attente ({pendingRequests.length})
+              </h3>
+              <div className="space-y-3">
+                {pendingRequests.map(request => (
+                  <div
+                    key={request.id}
+                    className="bg-orange-500/10 border-2 border-orange-500/30 rounded-xl p-4 flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                        <span className="text-white font-bold text-lg">
+                          {request.display_name[0].toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-white font-semibold">{request.display_name}</p>
+                        <p className="text-sm text-gray-400">{request.email}</p>
+                        <p className="text-xs text-orange-400">
+                          Demande envoyée le {new Date(request.created_at).toLocaleDateString('fr-FR')}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleAcceptRequest(request.id, request.user_id)}
+                        disabled={processingRequest === request.id}
+                        className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2"
+                      >
+                        {processingRequest === request.id ? (
+                          <Loader size={16} className="animate-spin" />
+                        ) : (
+                          <CheckCircle size={16} />
+                        )}
+                        Accepter
+                      </button>
+                      <button
+                        onClick={() => handleRejectRequest(request.id)}
+                        disabled={processingRequest === request.id}
+                        className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2"
+                      >
+                        {processingRequest === request.id ? (
+                          <Loader size={16} className="animate-spin" />
+                        ) : (
+                          <AlertCircle size={16} />
+                        )}
+                        Rejeter
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Liste des membres actuels */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {members.map(member => (
               <div key={member.id} className="bg-slate-700/30 border border-white/10 rounded-xl p-4">
