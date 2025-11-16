@@ -26,10 +26,19 @@ function TeamRivalriesContent() {
 
   useEffect(() => {
     loadTeamRivalries()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadTeamRivalries() {
     try {
+      setLoading(true)
+      
+      // Récupérer l'utilisateur
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
       // 1. Récupérer team_id
       let currentTeamId = searchParams.get('team_id')
       
@@ -38,12 +47,6 @@ function TeamRivalriesContent() {
       }
       
       if (!currentTeamId) {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          router.push('/login')
-          return
-        }
-
         const { data: membership } = await supabase
           .from('team_members')
           .select('team_id, role')
@@ -66,29 +69,24 @@ function TeamRivalriesContent() {
           router.push(`/dashboard/rivalries?team_id=${currentTeamId}`)
           return
         }
+      } else {
+        // Double vérification du rôle
+        const { data: membershipCheck } = await supabase
+          .from('team_members')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('team_id', currentTeamId)
+          .single()
+
+        if (!membershipCheck || (membershipCheck.role !== 'manager' && membershipCheck.role !== 'creator')) {
+          router.push(`/dashboard/rivalries?team_id=${currentTeamId}`)
+          return
+        }
+        
+        setIsManager(true)
       }
 
       setTeamId(currentTeamId)
-
-      // Récupérer l'utilisateur pour vérifier le rôle
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/login')
-        return
-      }
-
-      // Double vérification du rôle
-      const { data: membershipCheck } = await supabase
-        .from('team_members')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('team_id', currentTeamId)
-        .single()
-
-      if (!membershipCheck || (membershipCheck.role !== 'manager' && membershipCheck.role !== 'creator')) {
-        router.push(`/dashboard/rivalries?team_id=${currentTeamId}`)
-        return
-      }
 
       // Récupérer toutes les saisons
       const { data: seasons } = await supabase
@@ -219,7 +217,7 @@ function TeamRivalriesContent() {
       setFlopMatrix(flopMatrixArray)
 
     } catch (err) {
-      console.error('Erreur:', err)
+      console.error('Erreur chargement team rivalries:', err)
     } finally {
       setLoading(false)
     }
@@ -234,7 +232,19 @@ function TeamRivalriesContent() {
   }
 
   if (!isManager) {
-    return null
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-white mb-4">Accès réservé aux managers</h2>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition"
+          >
+            Retour au dashboard
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -253,6 +263,7 @@ function TeamRivalriesContent() {
               <Users size={24} />
               Vue Manager - Rivalités Équipe
             </h1>
+            <div className="w-32"></div>
           </div>
         </div>
       </header>
@@ -287,7 +298,7 @@ function TeamRivalriesContent() {
                               <img src={player.avatar} alt="" className="w-full h-full object-cover" />
                             ) : (
                               <span className="text-white font-bold text-xs">
-                                {player.name[0].toUpperCase()}
+                                {player.name[0]?.toUpperCase() || '?'}
                               </span>
                             )}
                           </div>
@@ -309,7 +320,7 @@ function TeamRivalriesContent() {
                               <img src={receiver.avatar} alt="" className="w-full h-full object-cover" />
                             ) : (
                               <span className="text-white font-bold text-xs">
-                                {receiver.name[0].toUpperCase()}
+                                {receiver.name[0]?.toUpperCase() || '?'}
                               </span>
                             )}
                           </div>
@@ -379,7 +390,7 @@ function TeamRivalriesContent() {
                               <img src={player.avatar} alt="" className="w-full h-full object-cover" />
                             ) : (
                               <span className="text-white font-bold text-xs">
-                                {player.name[0].toUpperCase()}
+                                {player.name[0]?.toUpperCase() || '?'}
                               </span>
                             )}
                           </div>
@@ -401,7 +412,7 @@ function TeamRivalriesContent() {
                               <img src={receiver.avatar} alt="" className="w-full h-full object-cover" />
                             ) : (
                               <span className="text-white font-bold text-xs">
-                                {receiver.name[0].toUpperCase()}
+                                {receiver.name[0]?.toUpperCase() || '?'}
                               </span>
                             )}
                           </div>
