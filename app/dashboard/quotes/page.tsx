@@ -32,30 +32,52 @@ export default function MemorableQuotesPage() {
   const loadQuotes = async () => {
     try {
       setLoading(true)
+      console.log('Chargement des citations...')
       
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push('/login')
         return
       }
+      console.log('✅ Utilisateur trouvé:', user.id)
 
-      // Récupérer l'équipe de l'utilisateur
-      const { data: membership } = await supabase
-        .from('team_members')
-        .select('team_id')
-        .eq('user_id', user.id)
-        .single()
-
-      if (!membership) {
-        router.push('/dashboard')
-        return
+      // Récupérer team_id depuis URL ou localStorage
+      let teamId: string | null = null
+      
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search)
+        teamId = params.get('team_id')
+        console.log('🔗 Team ID depuis URL:', teamId)
       }
+
+      if (!teamId && typeof window !== 'undefined') {
+        teamId = localStorage.getItem('selectedTeamId')
+        console.log('📦 Team ID depuis localStorage:', teamId)
+      }
+
+      // Fallback: première équipe de l'utilisateur
+      if (!teamId) {
+        const { data: membership } = await supabase
+          .from('team_members')
+          .select('team_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single()
+
+        if (!membership) {
+          router.push('/dashboard')
+          return
+        }
+        teamId = membership.team_id
+      }
+
+      console.log('✅ Équipe trouvée:', teamId)
 
       // Récupérer toutes les saisons de cette équipe
       const { data: seasons } = await supabase
         .from('seasons')
         .select('id, name')
-        .eq('team_id', membership.team_id)
+        .eq('team_id', teamId)
 
       const seasonIds = seasons?.map(s => s.id) || []
       const seasonNamesMap: Record<string, string> = {}
@@ -108,18 +130,31 @@ export default function MemorableQuotesPage() {
         return
       }
 
+      // Récupérer tous les vote IDs de ces sessions
+      const { data: votesForSessions } = await supabase
+        .from('votes')
+        .select('id, session_id')
+        .in('session_id', sessionIds)
+
+      const voteIdsFromSessions = votesForSessions?.map(v => v.id) || []
+      const voteSessionMap: Record<string, string> = {}
+      votesForSessions?.forEach(v => {
+        voteSessionMap[v.id] = v.session_id
+      })
+
+      if (voteIdsFromSessions.length === 0) {
+        setLoading(false)
+        return
+      }
+
       // Récupérer toutes les citations
       const { data: quotesData } = await supabase
         .from('memorable_quotes')
         .select('id, comment, vote_type, voter_id, player_id, saved_at, vote_id')
-        .in('vote_id', 
-          (await supabase
-            .from('votes')
-            .select('id')
-            .in('session_id', sessionIds)
-          ).data?.map(v => v.id) || []
-        )
+        .in('vote_id', voteIdsFromSessions)
         .order('saved_at', { ascending: false })
+
+      console.log('✅ Citations récupérées:', quotesData?.length || 0)
 
       if (!quotesData || quotesData.length === 0) {
         setQuotes([])
@@ -127,29 +162,20 @@ export default function MemorableQuotesPage() {
         return
       }
 
-      // Récupérer les votes pour avoir les session_id
-      const voteIds = quotesData.map(q => q.vote_id)
-      const { data: votesData } = await supabase
-        .from('votes')
-        .select('id, session_id')
-        .in('id', voteIds)
-
-      const voteSessionMap: Record<string, string> = {}
-      votesData?.forEach(v => {
-        voteSessionMap[v.id] = v.session_id
-      })
-
-      // Récupérer les profils des votants et joueurs
+      // Récupérer les profils des votants et joueurs (FILTRER LES NULL)
       const userIds = new Set<string>()
       quotesData.forEach(q => {
         if (q.voter_id) userIds.add(q.voter_id)
         if (q.player_id) userIds.add(q.player_id)
       })
 
+      // Convertir en array et filtrer les valeurs null/undefined
+      const validUserIds = Array.from(userIds).filter(id => id != null)
+
       const { data: profilesData } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, nickname, avatar_url')
-        .in('id', Array.from(userIds))
+        .in('id', validUserIds)
 
       const profilesMap: Record<string, { name: string; avatar: string | null }> = {}
       profilesData?.forEach(p => {
@@ -186,6 +212,7 @@ export default function MemorableQuotesPage() {
         })
 
       setQuotes(formattedQuotes)
+      console.log('✅ Chargement terminé')
 
     } catch (err) {
       console.error('Erreur:', err)
