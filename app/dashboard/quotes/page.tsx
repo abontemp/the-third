@@ -1,101 +1,125 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Loader, Quote, TrendingUp, TrendingDown } from 'lucide-react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { useState, useEffect, Suspense } from 'react'
+import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
 
-type SavedQuote = {
+type QuoteType = {
   id: string
   comment: string
   vote_type: 'top' | 'flop'
   voter_name: string
   player_name: string
+  player_avatar: string | null
   match_opponent: string
   match_date: string
   saved_at: string
   season_name?: string
 }
 
-function QuotesContent() {
+export default function MemorableQuotesPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const supabase = createClient()
   
   const [loading, setLoading] = useState(true)
-  const [quotes, setQuotes] = useState<SavedQuote[]>([])
+  const [quotes, setQuotes] = useState<QuoteType[]>([])
   const [filter, setFilter] = useState<'all' | 'top' | 'flop'>('all')
 
   useEffect(() => {
     loadQuotes()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadQuotes = async () => {
     try {
-      console.log('🔍 Chargement des citations...')
       setLoading(true)
       
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      
-      if (userError || !user) {
-        console.error('❌ Erreur auth:', userError)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
         router.push('/login')
         return
       }
 
-      console.log('✅ Utilisateur trouvé:', user.id)
+      // Récupérer l'équipe de l'utilisateur
+      const { data: membership } = await supabase
+        .from('team_members')
+        .select('team_id')
+        .eq('user_id', user.id)
+        .single()
 
-      // Récupérer le team_id depuis l'URL
-      let teamId = searchParams.get('team_id')
-      console.log('🔗 Team ID depuis URL:', teamId)
-
-      if (!teamId) {
-        // Fallback localStorage
-        teamId = localStorage.getItem('current_team_id')
-        console.log('📦 Team ID depuis localStorage:', teamId)
+      if (!membership) {
+        router.push('/dashboard')
+        return
       }
 
-      if (!teamId) {
-        console.log('⚠️ Pas de team_id, récupération de la première équipe')
-        
-        const { data: memberships, error: membershipError } = await supabase
-          .from('team_members')
-          .select('team_id')
-          .eq('user_id', user.id)
-          .limit(1)
+      // Récupérer toutes les saisons de cette équipe
+      const { data: seasons } = await supabase
+        .from('seasons')
+        .select('id, name')
+        .eq('team_id', membership.team_id)
 
-        if (membershipError || !memberships || memberships.length === 0) {
-          console.error('⚠️ Erreur membership:', membershipError)
-          setLoading(false)
-          return
-        }
+      const seasonIds = seasons?.map(s => s.id) || []
+      const seasonNamesMap: Record<string, string> = {}
+      seasons?.forEach(s => {
+        seasonNamesMap[s.id] = s.name
+      })
 
-        teamId = memberships[0].team_id
-      }
-
-      console.log('✅ Équipe trouvée:', teamId)
-
-      // Récupérer les citations sauvegardées
-      const { data: quotesData, error: quotesError } = await supabase
-        .from('memorable_quotes')
-        .select(`
-          id,
-          comment,
-          vote_type,
-          voter_id,
-          player_id,
-          vote_id,
-          created_at
-        `)
-        .eq('team_id', teamId)
-        .order('created_at', { ascending: false })
-
-      if (quotesError) {
-        console.error('⚠️ Erreur quotes:', quotesError)
+      if (seasonIds.length === 0) {
         setLoading(false)
         return
       }
 
-      console.log('✅ Citations récupérées:', quotesData?.length || 0)
+      // Récupérer tous les matchs de ces saisons
+      const { data: matches } = await supabase
+        .from('matches')
+        .select('id, opponent, match_date, season_id')
+        .in('season_id', seasonIds)
+
+      const matchMap: Record<string, { opponent: string; date: string; season: string }> = {}
+      matches?.forEach(m => {
+        matchMap[m.id] = {
+          opponent: m.opponent,
+          date: m.match_date,
+          season: seasonNamesMap[m.season_id] || ''
+        }
+      })
+
+      const matchIds = matches?.map(m => m.id) || []
+
+      if (matchIds.length === 0) {
+        setLoading(false)
+        return
+      }
+
+      // Récupérer toutes les sessions de vote
+      const { data: sessions } = await supabase
+        .from('voting_sessions')
+        .select('id, match_id')
+        .in('match_id', matchIds)
+
+      const sessionMatchMap: Record<string, string> = {}
+      sessions?.forEach(s => {
+        sessionMatchMap[s.id] = s.match_id
+      })
+
+      const sessionIds = sessions?.map(s => s.id) || []
+
+      if (sessionIds.length === 0) {
+        setLoading(false)
+        return
+      }
+
+      // Récupérer toutes les citations
+      const { data: quotesData } = await supabase
+        .from('memorable_quotes')
+        .select('id, comment, vote_type, voter_id, player_id, saved_at, vote_id')
+        .in('vote_id', 
+          (await supabase
+            .from('votes')
+            .select('id')
+            .in('session_id', sessionIds)
+          ).data?.map(v => v.id) || []
+        )
+        .order('saved_at', { ascending: false })
 
       if (!quotesData || quotesData.length === 0) {
         setQuotes([])
@@ -103,138 +127,80 @@ function QuotesContent() {
         return
       }
 
-      // Récupérer les vote_ids pour obtenir les infos de match
-      const voteIds = quotesData.map(q => q.vote_id).filter(Boolean)
-      
+      // Récupérer les votes pour avoir les session_id
+      const voteIds = quotesData.map(q => q.vote_id)
       const { data: votesData } = await supabase
         .from('votes')
-        .select(`
-          id,
-          session_id
-        `)
+        .select('id, session_id')
         .in('id', voteIds)
 
-      const votesMap: Record<string, string> = {}
+      const voteSessionMap: Record<string, string> = {}
       votesData?.forEach(v => {
-        votesMap[v.id] = v.session_id
+        voteSessionMap[v.id] = v.session_id
       })
 
-      // Récupérer les sessions pour obtenir les matchs
-      const sessionIds = Object.values(votesMap).filter(Boolean)
-      
-      const { data: sessionsData } = await supabase
-        .from('voting_sessions')
-        .select(`
-          id,
-          match_id
-        `)
-        .in('id', sessionIds)
-
-      const sessionsMap: Record<string, string> = {}
-      sessionsData?.forEach(s => {
-        sessionsMap[s.id] = s.match_id
-      })
-
-      // Récupérer les matchs
-      const matchIds = Object.values(sessionsMap).filter(Boolean)
-      
-      const { data: matchesData } = await supabase
-        .from('matches')
-        .select(`
-          id,
-          opponent,
-          match_date,
-          season_id
-        `)
-        .in('id', matchIds)
-
-      const matchesMap: Record<string, { opponent: string, match_date: string, season_id: string }> = {}
-      matchesData?.forEach(m => {
-        matchesMap[m.id] = {
-          opponent: m.opponent,
-          match_date: m.match_date,
-          season_id: m.season_id
-        }
-      })
-
-      // Récupérer les saisons
-      const seasonIds = [...new Set(matchesData?.map(m => m.season_id).filter(Boolean) || [])]
-      
-      const { data: seasonsData } = await supabase
-        .from('seasons')
-        .select('id, name')
-        .in('id', seasonIds)
-
-      const seasonsMap: Record<string, string> = {}
-      seasonsData?.forEach(s => {
-        seasonsMap[s.id] = s.name
-      })
-
-      // Récupérer les profils pour les noms
+      // Récupérer les profils des votants et joueurs
       const userIds = new Set<string>()
       quotesData.forEach(q => {
-        userIds.add(q.voter_id)
-        userIds.add(q.player_id)
+        if (q.voter_id) userIds.add(q.voter_id)
+        if (q.player_id) userIds.add(q.player_id)
       })
 
       const { data: profilesData } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, nickname')
+        .select('id, first_name, last_name, nickname, avatar_url')
         .in('id', Array.from(userIds))
 
-      const profilesMap: Record<string, string> = {}
+      const profilesMap: Record<string, { name: string; avatar: string | null }> = {}
       profilesData?.forEach(p => {
-        profilesMap[p.id] = p.nickname || 
-                           (p.first_name && p.last_name 
-                             ? `${p.first_name} ${p.last_name}` 
-                             : 'Joueur')
+        profilesMap[p.id] = {
+          name: p.nickname || 
+                (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8)),
+          avatar: p.avatar_url
+        }
       })
 
       // Formater les citations
-      const formattedQuotes = quotesData.map(q => {
-        const sessionId = votesMap[q.vote_id]
-        const matchId = sessionsMap[sessionId]
-        const matchInfo = matchesMap[matchId]
-        const seasonName = matchInfo?.season_id ? seasonsMap[matchInfo.season_id] : undefined
+      const formattedQuotes = quotesData
+        .filter(q => {
+          if (filter === 'all') return true
+          return q.vote_type === filter
+        })
+        .map(q => {
+          const sessionId = voteSessionMap[q.vote_id]
+          const matchId = sessionMatchMap[sessionId]
+          const matchData = matchMap[matchId]
 
-        return {
-          id: q.id,
-          comment: q.comment,
-          vote_type: q.vote_type as 'top' | 'flop',
-          voter_name: profilesMap[q.voter_id] || 'Inconnu',
-          player_name: profilesMap[q.player_id] || 'Inconnu',
-          match_opponent: matchInfo?.opponent || 'Match inconnu',
-          match_date: matchInfo?.match_date || '',
-          saved_at: q.created_at,
-          season_name: seasonName
-        }
-      })
+          return {
+            id: q.id,
+            comment: q.comment,
+            vote_type: q.vote_type,
+            voter_name: profilesMap[q.voter_id]?.name || 'Inconnu',
+            player_name: profilesMap[q.player_id]?.name || 'Inconnu',
+            player_avatar: profilesMap[q.player_id]?.avatar || null,
+            match_opponent: matchData?.opponent || 'Match inconnu',
+            match_date: matchData?.date || '',
+            saved_at: q.saved_at,
+            season_name: matchData?.season
+          }
+        })
 
       setQuotes(formattedQuotes)
 
     } catch (err) {
-      console.error('❌ Erreur générale:', err)
+      console.error('Erreur:', err)
     } finally {
       setLoading(false)
-      console.log('✅ Chargement terminé')
     }
   }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <Loader className="text-white animate-spin mx-auto mb-4" size={48} />
-          <p className="text-gray-400">Chargement des citations...</p>
-        </div>
+        <Loader className="text-white animate-spin" size={48} />
       </div>
     )
   }
-
-  const filteredQuotes = quotes.filter(q => {
-    if (filter === 'all') return true
-    return q.vote_type === filter
-  })
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -252,6 +218,7 @@ function QuotesContent() {
               <Quote size={24} />
               Mur des Citations
             </h1>
+            <div className="w-32"></div>
           </div>
         </div>
       </header>
@@ -295,61 +262,77 @@ function QuotesContent() {
         </div>
 
         {/* Liste des citations */}
-        {filteredQuotes.length === 0 ? (
-          <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-12 text-center">
-            <Quote className="mx-auto mb-4 text-gray-600" size={64} />
-            <h2 className="text-2xl font-bold text-white mb-2">
-              {filter === 'all' ? 'Aucune citation pour le moment' : `Aucune citation ${filter.toUpperCase()}`}
-            </h2>
+        {quotes.length === 0 ? (
+          <div className="text-center py-16">
+            <Quote className="mx-auto text-gray-600 mb-4" size={64} />
+            <h2 className="text-2xl font-bold text-white mb-2">Aucune citation mémorable</h2>
             <p className="text-gray-400">
-              Les managers peuvent sauvegarder des citations mémorables lors de la lecture des votes
+              Les managers et lecteurs peuvent sauvegarder des commentaires marquants pendant la lecture des votes.
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {filteredQuotes.map((quote) => (
+          <div className="space-y-6">
+            {quotes.map((quote) => (
               <div 
-                key={quote.id}
-                className={`bg-gradient-to-br ${
-                  quote.vote_type === 'top' 
-                    ? 'from-green-900/30 to-emerald-900/30 border-green-500/30' 
-                    : 'from-red-900/30 to-orange-900/30 border-red-500/30'
-                } border rounded-2xl p-6`}
+                key={quote.id} 
+                className={`rounded-2xl p-6 border-2 ${
+                  quote.vote_type === 'top'
+                    ? 'bg-gradient-to-br from-green-900/30 to-emerald-900/30 border-green-500/30'
+                    : 'bg-gradient-to-br from-red-900/30 to-orange-900/30 border-red-500/30'
+                }`}
               >
                 <div className="flex items-start gap-4">
-                  <div className={`p-3 rounded-full ${
-                    quote.vote_type === 'top' ? 'bg-green-500/20' : 'bg-red-500/20'
+                  {/* Avatar du joueur visé */}
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0 ${
+                    quote.vote_type === 'top'
+                      ? 'bg-gradient-to-br from-green-500 to-emerald-500'
+                      : 'bg-gradient-to-br from-red-500 to-orange-500'
                   }`}>
-                    {quote.vote_type === 'top' ? (
-                      <TrendingUp className="text-green-400" size={24} />
+                    {quote.player_avatar ? (
+                      <img src={quote.player_avatar} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <TrendingDown className="text-red-400" size={24} />
+                      <span className="text-white font-bold text-2xl">
+                        {quote.player_name[0]?.toUpperCase() || '?'}
+                      </span>
                     )}
                   </div>
-                  
+
                   <div className="flex-1">
-                    <p className="text-lg text-white mb-3 italic">
+                    {/* Badge TYPE */}
+                    <div className="flex items-center gap-2 mb-2">
+                      {quote.vote_type === 'top' ? (
+                        <span className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                          <TrendingUp size={14} />
+                          TOP
+                        </span>
+                      ) : (
+                        <span className="bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                          <TrendingDown size={14} />
+                          FLOP
+                        </span>
+                      )}
+                      <span className="text-gray-400 text-sm">
+                        {quote.vote_type === 'top' ? 'pour' : 'contre'}{' '}
+                        <strong className="text-white">{quote.player_name}</strong>
+                      </span>
+                    </div>
+
+                    {/* Citation */}
+                    <blockquote className="text-white text-lg italic mb-4 pl-4 border-l-4 border-white/20">
                       &ldquo;{quote.comment}&rdquo;
-                    </p>
-                    
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-400">
-                      <span className="text-white font-semibold">{quote.voter_name}</span>
-                      <span>→</span>
-                      <span className="text-white font-semibold">{quote.player_name}</span>
-                      <span>•</span>
-                      <span>{quote.match_opponent}</span>
-                      {quote.match_date && (
-                        <>
-                          <span>•</span>
-                          <span>{new Date(quote.match_date).toLocaleDateString('fr-FR')}</span>
-                        </>
-                      )}
-                      {quote.season_name && (
-                        <>
-                          <span>•</span>
-                          <span>{quote.season_name}</span>
-                        </>
-                      )}
+                    </blockquote>
+
+                    {/* Infos match */}
+                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-400">
+                      <span>
+                        📅 {new Date(quote.match_date).toLocaleDateString('fr-FR', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric'
+                        })}
+                      </span>
+                      <span>⚔️ vs {quote.match_opponent}</span>
+                      {quote.season_name && <span>🏆 {quote.season_name}</span>}
                     </div>
                   </div>
                 </div>
@@ -359,17 +342,5 @@ function QuotesContent() {
         )}
       </div>
     </div>
-  )
-}
-
-export default function QuotesPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
-        <Loader className="text-white animate-spin" size={48} />
-      </div>
-    }>
-      <QuotesContent />
-    </Suspense>
   )
 }
