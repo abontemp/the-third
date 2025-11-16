@@ -1,17 +1,35 @@
 'use client'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Loader, Users, TrendingUp, TrendingDown } from 'lucide-react'
+import { ArrowLeft, Loader, Swords, Heart, Target, Users } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
 
-type PlayerVoteMatrix = {
-  playerId: string
-  playerName: string
-  playerAvatar: string | null
-  votesGiven: Record<string, number> // receiverId -> count
+type RivalryData = {
+  player_id: string
+  player_name: string
+  player_avatar: string | null
+  flop_votes_given: number
 }
 
-function TeamRivalriesContent() {
+type SupporterData = {
+  supporter_id: string
+  supporter_name: string
+  supporter_avatar: string | null
+  top_votes_given: number
+}
+
+type DuelData = {
+  player1_id: string
+  player1_name: string
+  player1_avatar: string | null
+  player2_id: string
+  player2_name: string
+  player2_avatar: string | null
+  player1_votes_to_2: number
+  player2_votes_to_1: number
+}
+
+function RivalriesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -19,31 +37,35 @@ function TeamRivalriesContent() {
   const [loading, setLoading] = useState(true)
   const [teamId, setTeamId] = useState<string | null>(null)
   const [isManager, setIsManager] = useState(false)
-  
-  const [topMatrix, setTopMatrix] = useState<PlayerVoteMatrix[]>([])
-  const [flopMatrix, setFlopMatrix] = useState<PlayerVoteMatrix[]>([])
-  const [allPlayers, setAllPlayers] = useState<Array<{ id: string; name: string; avatar: string | null }>>([])
+  const [myRivals, setMyRivals] = useState<RivalryData[]>([])
+  const [mySupporters, setMySupporters] = useState<SupporterData[]>([])
+  const [topDuels, setTopDuels] = useState<DuelData[]>([])
 
   useEffect(() => {
-    loadTeamRivalries()
-  }, [])
+    loadRivalriesData()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadTeamRivalries() {
+  async function loadRivalriesData() {
     try {
-      // 1. Récupérer team_id
+      setLoading(true)
+      
+      // 1. Récupérer team_id depuis URL params
       let currentTeamId = searchParams.get('team_id')
       
+      // 2. Fallback : localStorage
       if (!currentTeamId && typeof window !== 'undefined') {
         currentTeamId = localStorage.getItem('selectedTeamId')
       }
       
-      if (!currentTeamId) {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          router.push('/login')
-          return
-        }
+      // Récupérer l'utilisateur connecté
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
 
+      // 3. Fallback : première équipe de l'utilisateur
+      if (!currentTeamId) {
         const { data: membership } = await supabase
           .from('team_members')
           .select('team_id, role')
@@ -59,38 +81,24 @@ function TeamRivalriesContent() {
         currentTeamId = membership.team_id
         
         // Vérifier si manager
-        if (membership.role === 'manager' || membership.role === 'creator') {
-          setIsManager(true)
-        } else {
-          // Rediriger les non-managers vers la vue normale
-          router.push(`/dashboard/rivalries?team_id=${currentTeamId}`)
-          return
-        }
+        const userIsManager = membership.role === 'manager' || membership.role === 'creator'
+        setIsManager(userIsManager)
+      } else {
+        // Vérifier si l'utilisateur est manager pour cette équipe
+        const { data: membershipRole } = await supabase
+          .from('team_members')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('team_id', currentTeamId)
+          .single()
+
+        const userIsManager = membershipRole?.role === 'manager' || membershipRole?.role === 'creator'
+        setIsManager(userIsManager)
       }
 
       setTeamId(currentTeamId)
 
-      // Récupérer l'utilisateur pour vérifier le rôle
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/login')
-        return
-      }
-
-      // Double vérification du rôle
-      const { data: membershipCheck } = await supabase
-        .from('team_members')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('team_id', currentTeamId)
-        .single()
-
-      if (!membershipCheck || (membershipCheck.role !== 'manager' && membershipCheck.role !== 'creator')) {
-        router.push(`/dashboard/rivalries?team_id=${currentTeamId}`)
-        return
-      }
-
-      // Récupérer toutes les saisons
+      // Récupérer toutes les saisons de l'équipe
       const { data: seasons } = await supabase
         .from('seasons')
         .select('id')
@@ -116,7 +124,7 @@ function TeamRivalriesContent() {
         return
       }
 
-      // Récupérer toutes les sessions
+      // Récupérer toutes les sessions de vote
       const { data: sessions } = await supabase
         .from('voting_sessions')
         .select('id')
@@ -140,7 +148,7 @@ function TeamRivalriesContent() {
         return
       }
 
-      // Récupérer tous les profils
+      // Récupérer tous les profils (avec avatars)
       const allUserIds = new Set<string>()
       allVotes.forEach(v => {
         if (v.voter_id) allUserIds.add(v.voter_id)
@@ -154,72 +162,103 @@ function TeamRivalriesContent() {
         .in('id', Array.from(allUserIds))
 
       const profilesMap: Record<string, { name: string; avatar: string | null }> = {}
-      const playersArray: Array<{ id: string; name: string; avatar: string | null }> = []
-
       profiles?.forEach(p => {
-        const name = p.nickname || 
-                    (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8))
         profilesMap[p.id] = {
-          name,
+          name: p.nickname || 
+                (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8)),
           avatar: p.avatar_url
         }
-        playersArray.push({
-          id: p.id,
-          name,
-          avatar: p.avatar_url
+      })
+
+      // 1. MES RIVAUX : ceux qui m'ont voté FLOP le plus souvent
+      const rivalsCounts: Record<string, number> = {}
+      allVotes.forEach(vote => {
+        if (vote.flop_player_id === user.id && vote.voter_id !== user.id) {
+          rivalsCounts[vote.voter_id] = (rivalsCounts[vote.voter_id] || 0) + 1
+        }
+      })
+
+      const rivalsArray: RivalryData[] = Object.entries(rivalsCounts).map(([playerId, count]) => ({
+        player_id: playerId,
+        player_name: profilesMap[playerId]?.name || 'Inconnu',
+        player_avatar: profilesMap[playerId]?.avatar || null,
+        flop_votes_given: count
+      }))
+
+      rivalsArray.sort((a, b) => b.flop_votes_given - a.flop_votes_given)
+      setMyRivals(rivalsArray.slice(0, 5))
+
+      // 2. MES SUPPORTERS : ceux qui m'ont voté TOP le plus souvent
+      const supportersCounts: Record<string, number> = {}
+      allVotes.forEach(vote => {
+        if (vote.top_player_id === user.id && vote.voter_id !== user.id) {
+          supportersCounts[vote.voter_id] = (supportersCounts[vote.voter_id] || 0) + 1
+        }
+      })
+
+      const supportersArray: SupporterData[] = Object.entries(supportersCounts).map(([supporterId, count]) => ({
+        supporter_id: supporterId,
+        supporter_name: profilesMap[supporterId]?.name || 'Inconnu',
+        supporter_avatar: profilesMap[supporterId]?.avatar || null,
+        top_votes_given: count
+      }))
+
+      supportersArray.sort((a, b) => b.top_votes_given - a.top_votes_given)
+      setMySupporters(supportersArray.slice(0, 5))
+
+      // 3. TOP DUELS : paires de joueurs avec le plus de votes FLOP croisés
+      const duelMatrix: Record<string, Record<string, number>> = {}
+      
+      allVotes.forEach(vote => {
+        if (vote.voter_id && vote.flop_player_id && vote.voter_id !== vote.flop_player_id) {
+          if (!duelMatrix[vote.voter_id]) {
+            duelMatrix[vote.voter_id] = {}
+          }
+          duelMatrix[vote.voter_id][vote.flop_player_id] = 
+            (duelMatrix[vote.voter_id][vote.flop_player_id] || 0) + 1
+        }
+      })
+
+      const duelsArray: DuelData[] = []
+      const processedPairs = new Set<string>()
+
+      Object.keys(duelMatrix).forEach(player1 => {
+        Object.keys(duelMatrix[player1]).forEach(player2 => {
+          const pairKey1 = `${player1}-${player2}`
+          const pairKey2 = `${player2}-${player1}`
+          
+          if (!processedPairs.has(pairKey1) && !processedPairs.has(pairKey2)) {
+            const votes1to2 = duelMatrix[player1]?.[player2] || 0
+            const votes2to1 = duelMatrix[player2]?.[player1] || 0
+            
+            // Garder seulement les duels significatifs (au moins 2 votes dans chaque sens)
+            if (votes1to2 >= 2 && votes2to1 >= 2) {
+              duelsArray.push({
+                player1_id: player1,
+                player1_name: profilesMap[player1]?.name || 'Inconnu',
+                player1_avatar: profilesMap[player1]?.avatar || null,
+                player2_id: player2,
+                player2_name: profilesMap[player2]?.name || 'Inconnu',
+                player2_avatar: profilesMap[player2]?.avatar || null,
+                player1_votes_to_2: votes1to2,
+                player2_votes_to_1: votes2to1
+              })
+              
+              processedPairs.add(pairKey1)
+              processedPairs.add(pairKey2)
+            }
+          }
         })
       })
 
-      playersArray.sort((a, b) => a.name.localeCompare(b.name))
-      setAllPlayers(playersArray)
+      duelsArray.sort((a, b) => 
+        (b.player1_votes_to_2 + b.player2_votes_to_1) - (a.player1_votes_to_2 + a.player2_votes_to_1)
+      )
 
-      // Construire les matrices TOP et FLOP
-      const topVoteMatrix: Record<string, Record<string, number>> = {}
-      const flopVoteMatrix: Record<string, Record<string, number>> = {}
-
-      // Initialiser les matrices
-      playersArray.forEach(p => {
-        topVoteMatrix[p.id] = {}
-        flopVoteMatrix[p.id] = {}
-      })
-
-      // Remplir les matrices
-      allVotes.forEach(vote => {
-        // Votes TOP
-        if (vote.voter_id && vote.top_player_id && vote.voter_id !== vote.top_player_id) {
-          if (!topVoteMatrix[vote.voter_id]) topVoteMatrix[vote.voter_id] = {}
-          topVoteMatrix[vote.voter_id][vote.top_player_id] = 
-            (topVoteMatrix[vote.voter_id][vote.top_player_id] || 0) + 1
-        }
-
-        // Votes FLOP
-        if (vote.voter_id && vote.flop_player_id && vote.voter_id !== vote.flop_player_id) {
-          if (!flopVoteMatrix[vote.voter_id]) flopVoteMatrix[vote.voter_id] = {}
-          flopVoteMatrix[vote.voter_id][vote.flop_player_id] = 
-            (flopVoteMatrix[vote.voter_id][vote.flop_player_id] || 0) + 1
-        }
-      })
-
-      // Convertir en format pour l'affichage
-      const topMatrixArray: PlayerVoteMatrix[] = playersArray.map(p => ({
-        playerId: p.id,
-        playerName: p.name,
-        playerAvatar: p.avatar,
-        votesGiven: topVoteMatrix[p.id] || {}
-      }))
-
-      const flopMatrixArray: PlayerVoteMatrix[] = playersArray.map(p => ({
-        playerId: p.id,
-        playerName: p.name,
-        playerAvatar: p.avatar,
-        votesGiven: flopVoteMatrix[p.id] || {}
-      }))
-
-      setTopMatrix(topMatrixArray)
-      setFlopMatrix(flopMatrixArray)
+      setTopDuels(duelsArray.slice(0, 5))
 
     } catch (err) {
-      console.error('Erreur:', err)
+      console.error('Erreur chargement rivalries:', err)
     } finally {
       setLoading(false)
     }
@@ -233,255 +272,214 @@ function TeamRivalriesContent() {
     )
   }
 
-  if (!isManager) {
-    return null
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <button
-              onClick={() => router.push(`/dashboard/rivalries${teamId ? `?team_id=${teamId}` : ''}`)}
+              onClick={() => router.push(`/dashboard${teamId ? `?team_id=${teamId}` : ''}`)}
               className="flex items-center gap-2 text-gray-400 hover:text-white transition"
             >
               <ArrowLeft size={20} />
-              <span>Vue personnelle</span>
+              <span>Retour au dashboard</span>
             </button>
             <h1 className="text-xl font-bold text-white flex items-center gap-2">
-              <Users size={24} />
-              Vue Manager - Rivalités Équipe
+              <Swords size={24} />
+              Rivalités & Duels
             </h1>
+            {isManager && (
+              <button
+                onClick={() => router.push(`/dashboard/rivalries/team-view${teamId ? `?team_id=${teamId}` : ''}`)}
+                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition"
+              >
+                <Users size={20} />
+                Vue Manager
+              </button>
+            )}
+            {!isManager && <div className="w-32"></div>}
           </div>
         </div>
       </header>
 
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* Matrice des votes TOP */}
-        <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-2xl p-8 mb-8">
+        {/* Mes Rivaux */}
+        <div className="bg-gradient-to-br from-red-900/30 to-orange-900/30 border border-red-500/30 rounded-2xl p-8 mb-6">
           <div className="flex items-center gap-3 mb-6">
-            <TrendingUp className="text-green-400" size={40} />
+            <Target className="text-red-400" size={40} />
             <div>
-              <h2 className="text-3xl font-bold text-white">Matrice des Votes TOP</h2>
-              <p className="text-gray-400 text-sm">Qui vote TOP pour qui dans l&apos;équipe</p>
+              <h2 className="text-3xl font-bold text-white">Mes Rivaux</h2>
+              <p className="text-gray-400 text-sm">Ceux qui vous votent le plus en FLOP</p>
             </div>
           </div>
 
-          {allPlayers.length === 0 ? (
-            <p className="text-gray-400">Aucune donnée disponible</p>
+          {myRivals.length === 0 ? (
+            <p className="text-gray-400">Aucune rivalité détectée pour le moment...</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className="sticky left-0 z-10 bg-slate-800/90 backdrop-blur-sm p-3 text-left text-white font-semibold border border-green-500/20">
-                      Votant →<br />Reçoit ↓
-                    </th>
-                    {allPlayers.map(player => (
-                      <th key={player.id} className="p-3 text-center bg-slate-800/50 border border-green-500/20">
-                        <div className="flex flex-col items-center gap-1">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center overflow-hidden">
-                            {player.avatar ? (
-                              <img src={player.avatar} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-white font-bold text-xs">
-                                {player.name[0].toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-white text-xs font-medium max-w-[80px] truncate">
-                            {player.name}
-                          </span>
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {allPlayers.map(receiver => (
-                    <tr key={receiver.id} className="hover:bg-slate-800/30 transition">
-                      <td className="sticky left-0 z-10 bg-slate-800/90 backdrop-blur-sm p-3 border border-green-500/20">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center overflow-hidden flex-shrink-0">
-                            {receiver.avatar ? (
-                              <img src={receiver.avatar} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-white font-bold text-xs">
-                                {receiver.name[0].toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-white font-medium text-sm">{receiver.name}</span>
-                        </div>
-                      </td>
-                      {allPlayers.map(voter => {
-                        const voteCount = topMatrix.find(m => m.playerId === voter.id)?.votesGiven[receiver.id] || 0
-                        const isSelf = voter.id === receiver.id
-                        
-                        return (
-                          <td 
-                            key={voter.id} 
-                            className={`p-3 text-center border border-green-500/20 ${
-                              isSelf ? 'bg-slate-700/50' : 'bg-slate-800/30'
-                            }`}
-                          >
-                            {isSelf ? (
-                              <span className="text-gray-600 text-sm">-</span>
-                            ) : voteCount > 0 ? (
-                              <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
-                                voteCount >= 10 ? 'bg-green-600 text-white' :
-                                voteCount >= 5 ? 'bg-green-700 text-white' :
-                                'bg-green-800/50 text-green-300'
-                              }`}>
-                                {voteCount}
-                              </span>
-                            ) : (
-                              <span className="text-gray-600 text-sm">0</span>
-                            )}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {myRivals.map((rival, index) => (
+                <div key={rival.player_id} className="bg-slate-800/50 rounded-xl p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${
+                      index === 0 ? 'bg-red-600' : 'bg-slate-700'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-pink-500 flex items-center justify-center overflow-hidden">
+                      {rival.player_avatar ? (
+                        <img src={rival.player_avatar} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-white font-bold text-lg">
+                          {rival.player_name[0]?.toUpperCase() || '?'}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-white font-semibold">{rival.player_name}</p>
+                      <p className="text-red-400 text-sm">
+                        {rival.flop_votes_given} vote{rival.flop_votes_given > 1 ? 's' : ''} FLOP contre vous
+                      </p>
+                    </div>
+                  </div>
+                  <Swords className="text-red-400" size={24} />
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        {/* Matrice des votes FLOP */}
-        <div className="bg-gradient-to-br from-red-900/30 to-orange-900/30 border border-red-500/30 rounded-2xl p-8">
+        {/* Mes Supporters */}
+        <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-2xl p-8 mb-6">
           <div className="flex items-center gap-3 mb-6">
-            <TrendingDown className="text-red-400" size={40} />
+            <Heart className="text-green-400" size={40} />
             <div>
-              <h2 className="text-3xl font-bold text-white">Matrice des Votes FLOP</h2>
-              <p className="text-gray-400 text-sm">Qui vote FLOP pour qui dans l&apos;équipe</p>
+              <h2 className="text-3xl font-bold text-white">Mes Plus Grands Fans</h2>
+              <p className="text-gray-400 text-sm">Ceux qui vous votent le plus en TOP</p>
             </div>
           </div>
 
-          {allPlayers.length === 0 ? (
-            <p className="text-gray-400">Aucune donnée disponible</p>
+          {mySupporters.length === 0 ? (
+            <p className="text-gray-400">Pas encore de supporters identifiés...</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className="sticky left-0 z-10 bg-slate-800/90 backdrop-blur-sm p-3 text-left text-white font-semibold border border-red-500/20">
-                      Votant →<br />Reçoit ↓
-                    </th>
-                    {allPlayers.map(player => (
-                      <th key={player.id} className="p-3 text-center bg-slate-800/50 border border-red-500/20">
-                        <div className="flex flex-col items-center gap-1">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center overflow-hidden">
-                            {player.avatar ? (
-                              <img src={player.avatar} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-white font-bold text-xs">
-                                {player.name[0].toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-white text-xs font-medium max-w-[80px] truncate">
-                            {player.name}
-                          </span>
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {allPlayers.map(receiver => (
-                    <tr key={receiver.id} className="hover:bg-slate-800/30 transition">
-                      <td className="sticky left-0 z-10 bg-slate-800/90 backdrop-blur-sm p-3 border border-red-500/20">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center overflow-hidden flex-shrink-0">
-                            {receiver.avatar ? (
-                              <img src={receiver.avatar} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-white font-bold text-xs">
-                                {receiver.name[0].toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-white font-medium text-sm">{receiver.name}</span>
-                        </div>
-                      </td>
-                      {allPlayers.map(voter => {
-                        const voteCount = flopMatrix.find(m => m.playerId === voter.id)?.votesGiven[receiver.id] || 0
-                        const isSelf = voter.id === receiver.id
-                        
-                        return (
-                          <td 
-                            key={voter.id} 
-                            className={`p-3 text-center border border-red-500/20 ${
-                              isSelf ? 'bg-slate-700/50' : 'bg-slate-800/30'
-                            }`}
-                          >
-                            {isSelf ? (
-                              <span className="text-gray-600 text-sm">-</span>
-                            ) : voteCount > 0 ? (
-                              <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
-                                voteCount >= 10 ? 'bg-red-600 text-white' :
-                                voteCount >= 5 ? 'bg-red-700 text-white' :
-                                'bg-red-800/50 text-red-300'
-                              }`}>
-                                {voteCount}
-                              </span>
-                            ) : (
-                              <span className="text-gray-600 text-sm">0</span>
-                            )}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {mySupporters.map((supporter, index) => (
+                <div key={supporter.supporter_id} className="bg-slate-800/50 rounded-xl p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${
+                      index === 0 ? 'bg-green-600' : 'bg-slate-700'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center overflow-hidden">
+                      {supporter.supporter_avatar ? (
+                        <img src={supporter.supporter_avatar} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-white font-bold text-lg">
+                          {supporter.supporter_name[0]?.toUpperCase() || '?'}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-white font-semibold">{supporter.supporter_name}</p>
+                      <p className="text-green-400 text-sm">
+                        {supporter.top_votes_given} vote{supporter.top_votes_given > 1 ? 's' : ''} TOP pour vous
+                      </p>
+                    </div>
+                  </div>
+                  <Heart className="text-green-400 fill-green-400" size={24} />
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        {/* Légende */}
-        <div className="mt-6 bg-slate-800/50 rounded-xl p-6">
-          <h3 className="text-white font-semibold mb-3">📖 Légende</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+        {/* Top Duels de l'Équipe */}
+        <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-2xl p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <Swords className="text-purple-400" size={40} />
             <div>
-              <p className="text-gray-300 mb-2">
-                <strong className="text-white">Lecture du tableau :</strong>
-              </p>
-              <ul className="text-gray-400 space-y-1">
-                <li>• Lignes = Joueur qui <strong>reçoit</strong> le vote</li>
-                <li>• Colonnes = Joueur qui <strong>donne</strong> le vote</li>
-                <li>• Case grisée = On ne peut pas voter pour soi-même</li>
-              </ul>
-            </div>
-            <div>
-              <p className="text-gray-300 mb-2">
-                <strong className="text-white">Intensité des couleurs :</strong>
-              </p>
-              <ul className="text-gray-400 space-y-1">
-                <li>• <span className="text-green-300">Vert clair</span> / <span className="text-red-300">Rouge clair</span> = 1-4 votes</li>
-                <li>• <span className="text-green-400">Vert moyen</span> / <span className="text-red-400">Rouge moyen</span> = 5-9 votes</li>
-                <li>• <span className="text-green-500">Vert foncé</span> / <span className="text-red-500">Rouge foncé</span> = 10+ votes</li>
-              </ul>
+              <h2 className="text-3xl font-bold text-white">Top Duels de l&apos;Équipe</h2>
+              <p className="text-gray-400 text-sm">Les rivalités les plus intenses</p>
             </div>
           </div>
+
+          {topDuels.length === 0 ? (
+            <p className="text-gray-400">Pas encore de duels significatifs dans l&apos;équipe...</p>
+          ) : (
+            <div className="space-y-4">
+              {topDuels.map((duel, index) => (
+                <div key={`${duel.player1_id}-${duel.player2_id}`} className="bg-slate-800/50 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-2xl font-bold text-purple-400">#{index + 1}</span>
+                    <Swords className="text-purple-400" size={28} />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="text-center flex-1">
+                      <div className="w-14 h-14 mx-auto mb-2 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center overflow-hidden">
+                        {duel.player1_avatar ? (
+                          <img src={duel.player1_avatar} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-white font-bold text-lg">
+                            {duel.player1_name[0]?.toUpperCase() || '?'}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-white font-bold text-lg mb-2">{duel.player1_name}</p>
+                      <div className="bg-red-500/20 border border-red-500/30 rounded-lg px-4 py-2">
+                        <p className="text-red-400 text-2xl font-bold">{duel.player1_votes_to_2}</p>
+                        <p className="text-gray-400 text-xs">FLOP donnés</p>
+                      </div>
+                    </div>
+
+                    <div className="px-6">
+                      <div className="text-gray-500 text-3xl font-bold">VS</div>
+                    </div>
+
+                    <div className="text-center flex-1">
+                      <div className="w-14 h-14 mx-auto mb-2 rounded-full bg-gradient-to-br from-pink-500 to-red-500 flex items-center justify-center overflow-hidden">
+                        {duel.player2_avatar ? (
+                          <img src={duel.player2_avatar} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-white font-bold text-lg">
+                            {duel.player2_name[0]?.toUpperCase() || '?'}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-white font-bold text-lg mb-2">{duel.player2_name}</p>
+                      <div className="bg-red-500/20 border border-red-500/30 rounded-lg px-4 py-2">
+                        <p className="text-red-400 text-2xl font-bold">{duel.player2_votes_to_1}</p>
+                        <p className="text-gray-400 text-xs">FLOP donnés</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 text-center">
+                    <p className="text-gray-500 text-sm">
+                      Intensité : <span className="text-white font-semibold">
+                        {duel.player1_votes_to_2 + duel.player2_votes_to_1} votes FLOP échangés
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-export default function TeamRivalriesPage() {
+export default function RivalriesPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
         <Loader className="text-white animate-spin" size={48} />
       </div>
     }>
-      <TeamRivalriesContent />
+      <RivalriesContent />
     </Suspense>
   )
 }
