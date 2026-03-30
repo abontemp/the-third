@@ -205,6 +205,25 @@ export default function OnboardingPage() {
 
       if (error) throw error
 
+      // Récupérer le nom du demandeur pour l'email
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, nickname, email')
+        .eq('id', user.id)
+        .single()
+
+      const requesterName = profile?.nickname ||
+        (profile?.first_name && profile?.last_name
+          ? `${profile.first_name} ${profile.last_name}`
+          : profile?.email || user.email || 'Un utilisateur')
+
+      // Notifier les managers par email (sans bloquer)
+      fetch('/api/notify-join-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_id: teamId, requester_name: requesterName }),
+      }).catch(console.error)
+
       alert(`✅ Demande envoyée à l'équipe "${teamName}" !`)
       router.push('/dashboard')
 
