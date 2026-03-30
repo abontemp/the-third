@@ -1,10 +1,19 @@
 'use client'
 
-import { useState } from 'react'
-import { Trophy, Users, Vote, TrendingUp, Menu, X, ChevronRight, Zap } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Trophy, Users, Vote, TrendingUp, Menu, X, ChevronRight, Zap, LayoutDashboard } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 export default function Home() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsLoggedIn(!!user)
+    })
+  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -18,9 +27,16 @@ export default function Home() {
             
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-gray-300 hover:text-white transition">Fonctionnalités</a>
-              <a href="/login" className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-6 py-2 rounded-lg hover:shadow-lg transition">
-                Commencer
-              </a>
+              {isLoggedIn ? (
+                <a href="/dashboard" className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition font-semibold">
+                  <LayoutDashboard size={18} />
+                  Mon dashboard
+                </a>
+              ) : (
+                <a href="/login" className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-6 py-2 rounded-lg hover:shadow-lg transition">
+                  Commencer
+                </a>
+              )}
             </div>
 
             <button 
