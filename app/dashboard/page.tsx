@@ -14,6 +14,7 @@ type Team = {
   name: string
   sport: string
   description: string | null
+  team_code: string
   userRole: 'creator' | 'manager' | 'member'
   memberCount: number
   pendingRequests: number
@@ -130,7 +131,8 @@ export default function DashboardPage() {
             id,
             name,
             sport,
-            description
+            description,
+            team_code
           )
         `)
         .eq('user_id', user.id)
@@ -166,6 +168,7 @@ export default function DashboardPage() {
             name: team.name,
             sport: team.sport,
             description: team.description,
+            team_code: team.team_code,
             userRole: membership.role,
             memberCount: memberCount || 0,
             pendingRequests: pendingCount
@@ -669,9 +672,14 @@ export default function DashboardPage() {
                   className="w-full bg-slate-700/30 hover:bg-slate-700/50 border border-white/10 hover:border-blue-500/50 rounded-xl p-6 text-left transition group"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xl font-bold text-white group-hover:text-blue-400 transition">
-                      {team.name}
-                    </h3>
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-xl font-bold text-white group-hover:text-blue-400 transition">
+                        {team.name}
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-md bg-slate-600/50 border border-white/10 text-xs font-mono text-gray-400">
+                        #{team.team_code}
+                      </span>
+                    </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                       team.userRole === 'creator' ? 'bg-yellow-500/20 text-yellow-300' :
                       team.userRole === 'manager' ? 'bg-purple-500/20 text-purple-300' :
@@ -718,7 +726,14 @@ export default function DashboardPage() {
                 T3
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">{selectedTeam?.name}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold text-white">{selectedTeam?.name}</h1>
+                  {selectedTeam?.team_code && (
+                    <span className="px-2 py-0.5 rounded-md bg-slate-700/80 border border-white/10 text-xs font-mono text-gray-400">
+                      #{selectedTeam.team_code}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-400">{selectedTeam?.sport}</p>
               </div>
             </div>
@@ -1016,6 +1031,19 @@ export default function DashboardPage() {
                 Gérer les managers
               </button>
             )}
+          </div>
+
+          {/* Code d'invitation */}
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-6 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Code d&apos;invitation</p>
+              <p className="text-2xl font-mono font-bold text-blue-400 tracking-widest">
+                {selectedTeam?.team_code}
+              </p>
+            </div>
+            <p className="text-xs text-gray-500 text-right max-w-[180px]">
+              Partage ce code pour que tes coéquipiers puissent rejoindre l&apos;équipe
+            </p>
           </div>
 
           {/* Demandes en attente (Managers seulement) */}
