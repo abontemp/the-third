@@ -73,6 +73,7 @@ export default function OnboardingPage() {
         .insert([{
           team_id: team.id,
           name: `Saison ${currentYear}`,
+          start_date: new Date().toISOString().split('T')[0],
           is_active: true
         }])
         .select()
