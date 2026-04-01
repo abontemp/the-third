@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, Swords, Heart, Target, Users } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
@@ -164,8 +166,7 @@ function RivalriesContent() {
       const profilesMap: Record<string, { name: string; avatar: string | null }> = {}
       profiles?.forEach(p => {
         profilesMap[p.id] = {
-          name: p.nickname || 
-                (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8)),
+          name: getDisplayName(p),
           avatar: p.avatar_url
         }
       })
@@ -258,7 +259,7 @@ function RivalriesContent() {
       setTopDuels(duelsArray.slice(0, 5))
 
     } catch (err) {
-      console.error('Erreur chargement rivalries:', err)
+      logger.error('Erreur chargement rivalries:', err)
     } finally {
       setLoading(false)
     }

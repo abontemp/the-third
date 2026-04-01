@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, Trophy, Target } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -31,20 +33,20 @@ export default function PredictionsLeaderboardPage() {
   const loadLeaderboard = async () => {
     try {
       setLoading(true)
-      console.log('🔍 Chargement du classement...')
+      logger.log('🔍 Chargement du classement...')
       
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push('/login')
         return
       }
-      console.log('✅ Utilisateur trouvé:', user.id)
+      logger.log('✅ Utilisateur trouvé:', user.id)
 
       // Récupérer l'équipe sélectionnée depuis le localStorage
       const selectedTeamId = localStorage.getItem('selectedTeamId')
       
       if (!selectedTeamId) {
-        console.log('❌ Pas d\'équipe sélectionnée')
+        logger.log('❌ Pas d\'équipe sélectionnée')
         router.push('/dashboard')
         return
       }
@@ -58,10 +60,10 @@ export default function PredictionsLeaderboardPage() {
         .maybeSingle()
 
       if (!membership) {
-        console.log('❌ Pas de membership trouvé')
+        logger.log('❌ Pas de membership trouvé')
         return
       }
-      console.log('✅ Équipe trouvée:', membership.team_id)
+      logger.log('✅ Équipe trouvée:', membership.team_id)
 
       // Récupérer tous les matchs de l'équipe
       const { data: matches } = await supabase
@@ -70,7 +72,7 @@ export default function PredictionsLeaderboardPage() {
         .eq('team_id', membership.team_id)
 
       const matchIds = matches?.map(m => m.id) || []
-      console.log(`✅ ${matchIds.length} matchs trouvés`)
+      logger.log(`✅ ${matchIds.length} matchs trouvés`)
 
       if (matchIds.length === 0) {
         setLoading(false)
@@ -84,7 +86,7 @@ export default function PredictionsLeaderboardPage() {
         .in('match_id', matchIds)
 
       const sessionIds = sessions?.map(s => s.id) || []
-      console.log(`✅ ${sessionIds.length} sessions trouvées`)
+      logger.log(`✅ ${sessionIds.length} sessions trouvées`)
 
       if (sessionIds.length === 0) {
         setLoading(false)
@@ -98,12 +100,12 @@ export default function PredictionsLeaderboardPage() {
         .in('session_id', sessionIds)
 
       if (!predictions || predictions.length === 0) {
-        console.log('❌ Aucune prédiction trouvée')
+        logger.log('❌ Aucune prédiction trouvée')
         setLeaderboard([])
         setLoading(false)
         return
       }
-      console.log(`✅ ${predictions.length} prédictions trouvées`)
+      logger.log(`✅ ${predictions.length} prédictions trouvées`)
 
       // Calculer les stats par joueur
       const playerStats: Record<string, {
@@ -146,8 +148,7 @@ export default function PredictionsLeaderboardPage() {
       const profilesMap: Record<string, { name: string; avatar_url?: string }> = {}
       profiles?.forEach(p => {
         profilesMap[p.id] = {
-          name: p.nickname || 
-                (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8)),
+          name: getDisplayName(p),
           avatar_url: p.avatar_url
         }
       })
@@ -182,10 +183,10 @@ export default function PredictionsLeaderboardPage() {
         setMyStats(leaderboardData[myIndex])
       }
 
-      console.log('✅ Classement chargé avec succès')
+      logger.log('✅ Classement chargé avec succès')
 
     } catch (error) {
-      console.error('❌ Erreur lors du chargement du classement:', error)
+      logger.error('❌ Erreur lors du chargement du classement:', error)
     } finally {
       setLoading(false)
     }

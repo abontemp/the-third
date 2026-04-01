@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { ArrowLeft, Search, Users, Loader, Hash, CheckCircle } from 'lucide-react'
@@ -35,6 +37,11 @@ export default function JoinTeamPage() {
 
       const query = searchQuery.trim()
 
+      if (query.length > 50) {
+        alert('La recherche ne peut pas dépasser 50 caractères')
+        return
+      }
+
       // Rechercher par code (6 chiffres exactement) OU par nom (insensible à la casse)
       const { data: teamsData, error } = await supabase
         .from('teams')
@@ -66,7 +73,7 @@ export default function JoinTeamPage() {
       setSearchResults(teamsWithCounts)
 
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       alert('Erreur lors de la recherche')
     } finally {
       setLoading(false)
@@ -133,23 +140,20 @@ export default function JoinTeamPage() {
         .eq('id', user.id)
         .single()
 
-      const requesterName = profile?.nickname ||
-        (profile?.first_name && profile?.last_name
-          ? `${profile.first_name} ${profile.last_name}`
-          : profile?.email || user.email || 'Un utilisateur')
+      const requesterName = getDisplayName(profile)
 
       // Notifier les managers par email (sans bloquer)
       fetch('/api/notify-join-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ team_id: teamId, requester_name: requesterName }),
-      }).catch(console.error)
+      }).catch(logger.error)
 
       alert(`✅ Demande envoyée à l'équipe "${teamName}" !`)
       router.push('/dashboard')
 
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       alert('Erreur lors de l\'envoi de la demande')
     } finally {
       setRequesting(false)

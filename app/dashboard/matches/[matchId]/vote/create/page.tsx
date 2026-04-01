@@ -1,8 +1,9 @@
 'use client'
-
+import { logger } from '@/lib/utils/logger'
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Users, Send, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 
 type TeamMember = {
@@ -47,7 +48,7 @@ export default function CreateVotePage() {
         return
       }
 
-      console.log('🔍 Chargement du match:', matchId)
+      logger.log('🔍 Chargement du match:', matchId)
 
       // Charger le match
       const { data: matchData, error: matchError } = await supabase
@@ -56,11 +57,11 @@ export default function CreateVotePage() {
         .eq('id', matchId)
         .single()
 
-      console.log('📋 Match data:', matchData)
+      logger.log('📋 Match data:', matchData)
 
       if (matchError || !matchData) {
         setError("Match introuvable")
-        console.error('Erreur match:', matchError)
+        logger.error('Erreur match:', matchError)
         setLoading(false)
         return
       }
@@ -78,18 +79,18 @@ export default function CreateVotePage() {
         .eq('id', matchData.season_id)
         .single()
 
-      console.log('🏀 Season data:', seasonData)
+      logger.log('🏀 Season data:', seasonData)
 
       if (seasonError || !seasonData) {
         setError("Impossible de trouver l'équipe")
-        console.error('Erreur saison:', seasonError)
+        logger.error('Erreur saison:', seasonError)
         setLoading(false)
         return
       }
 
       const teamId = seasonData.team_id
 
-      console.log('🏀 Team ID:', teamId)
+      logger.log('🏀 Team ID:', teamId)
 
       // Vérifier que l'utilisateur est manager
       const { data: memberData } = await supabase
@@ -99,7 +100,7 @@ export default function CreateVotePage() {
         .eq('user_id', user.id)
         .single()
 
-      console.log('👤 User role:', memberData?.role)
+      logger.log('👤 User role:', memberData?.role)
 
       if (!memberData || (memberData.role !== 'creator' && memberData.role !== 'manager')) {
         setError("Vous devez être manager pour créer un vote")
@@ -113,11 +114,11 @@ export default function CreateVotePage() {
         .select('id, user_id, role')
         .eq('team_id', teamId)
 
-      console.log('👥 Members data:', membersData)
-      console.log('👥 Nombre de membres:', membersData?.length)
+      logger.log('👥 Members data:', membersData)
+      logger.log('👥 Nombre de membres:', membersData?.length)
 
       if (membersError) {
-        console.error('Erreur membres:', membersError)
+        logger.error('Erreur membres:', membersError)
         setError("Erreur lors du chargement des membres")
         setLoading(false)
         return
@@ -132,15 +133,15 @@ export default function CreateVotePage() {
       // Charger les profils de TOUS les membres
       const userIds = membersData.map(m => m.user_id)
       
-      console.log('🔍 Chargement des profils pour:', userIds)
+      logger.log('🔍 Chargement des profils pour:', userIds)
 
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, nickname, avatar_url')
         .in('id', userIds)
 
-      console.log('📝 Profiles data:', profilesData)
-      console.log('📝 Nombre de profils:', profilesData?.length)
+      logger.log('📝 Profiles data:', profilesData)
+      logger.log('📝 Nombre de profils:', profilesData?.length)
 
       // Créer un mapping des profiles
       const profilesMap: Record<string, { 
@@ -150,10 +151,7 @@ export default function CreateVotePage() {
       
       profilesData?.forEach(profile => {
         profilesMap[profile.id] = {
-          display_name: profile.nickname || 
-                       (profile.first_name && profile.last_name 
-                         ? `${profile.first_name} ${profile.last_name}` 
-                         : profile.id.substring(0, 8)),
+          display_name: getDisplayName(profile),
           avatar_url: profile.avatar_url
         }
       })
@@ -167,14 +165,14 @@ export default function CreateVotePage() {
         avatar_url: profilesMap[member.user_id]?.avatar_url
       }))
 
-      console.log('✅ Membres formatés:', formattedMembers)
+      logger.log('✅ Membres formatés:', formattedMembers)
       setMembers(formattedMembers)
 
       // Sélectionner tous les membres par défaut
       setSelectedMembers(formattedMembers.map(m => m.id))
 
     } catch (err) {
-      console.error('❌ Erreur globale:', err)
+      logger.error('❌ Erreur globale:', err)
       setError("Erreur lors du chargement")
     } finally {
       setLoading(false)
@@ -244,7 +242,7 @@ export default function CreateVotePage() {
       }, 1500)
 
     } catch (err: unknown) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       setError(err instanceof Error ? err.message : "Erreur lors de la création")
     } finally {
       setSubmitting(false)

@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, Quote, TrendingUp, TrendingDown } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -32,14 +34,14 @@ export default function MemorableQuotesPage() {
   const loadQuotes = async () => {
     try {
       setLoading(true)
-      console.log('Chargement des citations...')
+      logger.log('Chargement des citations...')
       
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push('/login')
         return
       }
-      console.log('✅ Utilisateur trouvé:', user.id)
+      logger.log('✅ Utilisateur trouvé:', user.id)
 
       // Récupérer team_id depuis URL ou localStorage
       let teamId: string | null = null
@@ -47,12 +49,12 @@ export default function MemorableQuotesPage() {
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search)
         teamId = params.get('team_id')
-        console.log('🔗 Team ID depuis URL:', teamId)
+        logger.log('🔗 Team ID depuis URL:', teamId)
       }
 
       if (!teamId && typeof window !== 'undefined') {
         teamId = localStorage.getItem('selectedTeamId')
-        console.log('📦 Team ID depuis localStorage:', teamId)
+        logger.log('📦 Team ID depuis localStorage:', teamId)
       }
 
       // Fallback: première équipe de l'utilisateur
@@ -71,7 +73,7 @@ export default function MemorableQuotesPage() {
         teamId = membership.team_id
       }
 
-      console.log('✅ Équipe trouvée:', teamId)
+      logger.log('✅ Équipe trouvée:', teamId)
 
       // Récupérer toutes les saisons de cette équipe
       const { data: seasons } = await supabase
@@ -154,7 +156,7 @@ export default function MemorableQuotesPage() {
         .in('vote_id', voteIdsFromSessions)
         .order('saved_at', { ascending: false })
 
-      console.log('✅ Citations récupérées:', quotesData?.length || 0)
+      logger.log('✅ Citations récupérées:', quotesData?.length || 0)
 
       if (!quotesData || quotesData.length === 0) {
         setQuotes([])
@@ -180,8 +182,7 @@ export default function MemorableQuotesPage() {
       const profilesMap: Record<string, { name: string; avatar: string | null }> = {}
       profilesData?.forEach(p => {
         profilesMap[p.id] = {
-          name: p.nickname || 
-                (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8)),
+          name: getDisplayName(p),
           avatar: p.avatar_url
         }
       })
@@ -212,10 +213,10 @@ export default function MemorableQuotesPage() {
         })
 
       setQuotes(formattedQuotes)
-      console.log('✅ Chargement terminé')
+      logger.log('✅ Chargement terminé')
 
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
     } finally {
       setLoading(false)
     }

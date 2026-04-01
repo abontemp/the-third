@@ -1,4 +1,5 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -29,7 +30,7 @@ export default function HistoryPage() {
   const loadHistory = async () => {
     try {
       setLoading(true)
-      console.log('🔍 Chargement de l\'historique...')
+      logger.log('🔍 Chargement de l\'historique...')
       
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
@@ -41,12 +42,12 @@ export default function HistoryPage() {
       const selectedTeamId = localStorage.getItem('selectedTeamId')
       
       if (!selectedTeamId) {
-        console.log('❌ Pas d\'équipe sélectionnée')
+        logger.log('❌ Pas d\'équipe sélectionnée')
         router.push('/dashboard')
         return
       }
 
-      console.log('✅ Équipe sélectionnée:', selectedTeamId)
+      logger.log('✅ Équipe sélectionnée:', selectedTeamId)
 
       // Vérifier que l'utilisateur est membre de cette équipe
       const { data: membership } = await supabase
@@ -57,7 +58,7 @@ export default function HistoryPage() {
         .maybeSingle()
 
       if (!membership) {
-        console.log('❌ Vous n\'êtes pas membre de cette équipe')
+        logger.log('❌ Vous n\'êtes pas membre de cette équipe')
         router.push('/dashboard')
         return
       }
@@ -69,7 +70,7 @@ export default function HistoryPage() {
         .eq('team_id', selectedTeamId)
 
       const seasonIds = seasons?.map(s => s.id) || []
-      console.log(`✅ ${seasonIds.length} saisons trouvées`)
+      logger.log(`✅ ${seasonIds.length} saisons trouvées`)
 
       if (seasonIds.length === 0) {
         setLoading(false)
@@ -83,7 +84,7 @@ export default function HistoryPage() {
         .in('season_id', seasonIds)
 
       const matchIds = matches?.map(m => m.id) || []
-      console.log(`✅ ${matchIds.length} matchs trouvés`)
+      logger.log(`✅ ${matchIds.length} matchs trouvés`)
 
       if (matchIds.length === 0) {
         setLoading(false)
@@ -104,7 +105,7 @@ export default function HistoryPage() {
         .eq('status', 'completed')
         .order('created_at', { ascending: false })
 
-      console.log(`✅ ${sessionsData?.length || 0} sessions terminées trouvées`)
+      logger.log(`✅ ${sessionsData?.length || 0} sessions terminées trouvées`)
 
       if (!sessionsData || sessionsData.length === 0) {
         setLoading(false)
@@ -135,10 +136,10 @@ export default function HistoryPage() {
       )
 
       setSessions(sessionsWithCounts)
-      console.log('✅ Historique chargé avec succès')
+      logger.log('✅ Historique chargé avec succès')
 
     } catch (error) {
-      console.error('❌ Erreur:', error)
+      logger.error('❌ Erreur:', error)
     } finally {
       setLoading(false)
     }

@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Users, CheckCircle, Clock, AlertCircle, Play, Loader, XCircle, Share2, Copy, Check } from 'lucide-react'
@@ -35,10 +37,25 @@ export default function ManageVotePage() {
 
   useEffect(() => {
     loadData()
-    
-    // Rafraîchir toutes les 5 secondes
-    const interval = setInterval(loadData, 5000)
-    return () => clearInterval(interval)
+
+    // Écoute Realtime des changements sur session_participants
+    const subscription = supabase
+      .channel(`manage-${sessionId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'session_participants',
+        filter: `session_id=eq.${sessionId}`,
+      }, () => { loadData() })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'voting_sessions',
+        filter: `id=eq.${sessionId}`,
+      }, () => { loadData() })
+      .subscribe()
+
+    return () => { supabase.removeChannel(subscription) }
   }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
@@ -101,8 +118,20 @@ export default function ManageVotePage() {
             .eq('user_id', user.id)
             .single()
 
-          setIsManager(membership?.role === 'manager' || membership?.role === 'creator')
+          const isUserManager = membership?.role === 'manager' || membership?.role === 'creator'
+          setIsManager(isUserManager)
+
+          if (!isUserManager) {
+            router.push('/dashboard')
+            return
+          }
+        } else {
+          router.push('/dashboard')
+          return
         }
+      } else {
+        router.push('/dashboard')
+        return
       }
 
       // Récupérer les participants
@@ -111,43 +140,26 @@ export default function ManageVotePage() {
         .select('user_id, has_voted')
         .eq('session_id', sessionId)
 
-      if (participantsData) {
-        // Récupérer les noms des participants
-        const participantsWithNames = await Promise.all(
-          participantsData.map(async (p) => {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('first_name, last_name, email, nickname')
-              .eq('id', p.user_id)
-              .single()
+      if (participantsData && participantsData.length > 0) {
+        // Batch : récupérer tous les profils en une seule requête
+        const participantIds = participantsData.map(p => p.user_id)
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email, nickname')
+          .in('id', participantIds)
 
-            let displayName = 'Utilisateur'
-            
-            if (profile) {
-              if (profile.nickname?.trim()) {
-                displayName = profile.nickname.trim()
-              } else if (profile.first_name || profile.last_name) {
-                const firstName = profile.first_name?.trim() || ''
-                const lastName = profile.last_name?.trim() || ''
-                displayName = `${firstName} ${lastName}`.trim()
-              } else if (profile.email) {
-                displayName = profile.email
-              }
-            }
+        const profilesMap: Record<string, any> = {}
+        profiles?.forEach(p => { profilesMap[p.id] = p })
 
-            return {
-              user_id: p.user_id,
-              has_voted: p.has_voted,
-              display_name: displayName
-            }
-          })
-        )
-
-        setParticipants(participantsWithNames)
+        setParticipants(participantsData.map(p => ({
+          user_id: p.user_id,
+          has_voted: p.has_voted,
+          display_name: getDisplayName(profilesMap[p.user_id])
+        })))
       }
 
     } catch (err) {
-      console.error('Erreur chargement:', err)
+      logger.error('Erreur chargement:', err)
       setError('Erreur lors du chargement')
     } finally {
       setLoading(false)
@@ -210,7 +222,7 @@ export default function ManageVotePage() {
       router.push(`/vote/${sessionId}/reading`)
 
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       alert('Erreur lors de la clôture du vote')
     } finally {
       setClosing(false)

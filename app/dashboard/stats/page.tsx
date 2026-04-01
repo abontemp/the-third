@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Trophy, ThumbsDown, Ghost, Loader, BarChart3 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -30,25 +32,25 @@ export default function StatsPage() {
   const loadStats = async () => {
     try {
       setLoading(true)
-      console.log('🔍 Chargement des stats...')
+      logger.log('🔍 Chargement des stats...')
       
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push('/login')
         return
       }
-      console.log('✅ Utilisateur trouvé:', user.id)
+      logger.log('✅ Utilisateur trouvé:', user.id)
 
       // Récupérer l'équipe sélectionnée depuis le localStorage
       const selectedTeamId = localStorage.getItem('selectedTeamId')
       
       if (!selectedTeamId) {
-        console.log('❌ Pas d\'équipe sélectionnée dans le localStorage')
+        logger.log('❌ Pas d\'équipe sélectionnée dans le localStorage')
         router.push('/dashboard')
         return
       }
       
-      console.log('✅ Équipe sélectionnée:', selectedTeamId)
+      logger.log('✅ Équipe sélectionnée:', selectedTeamId)
 
       // Vérifier que l'utilisateur est bien membre de cette équipe
       const { data: membership, error: membershipError } = await supabase
@@ -59,15 +61,15 @@ export default function StatsPage() {
         .maybeSingle()
 
       if (membershipError) {
-        console.error('❌ Erreur membership:', membershipError)
+        logger.error('❌ Erreur membership:', membershipError)
       }
 
       if (!membership) {
-        console.log('❌ Vous n\'êtes pas membre de cette équipe')
+        logger.log('❌ Vous n\'êtes pas membre de cette équipe')
         router.push('/dashboard')
         return
       }
-      console.log('✅ Membership confirmé pour l\'équipe:', membership.team_id)
+      logger.log('✅ Membership confirmé pour l\'équipe:', membership.team_id)
 
       // Récupérer toutes les saisons de l'équipe
       const { data: seasons, error: seasonsError } = await supabase
@@ -76,14 +78,14 @@ export default function StatsPage() {
         .eq('team_id', membership.team_id)
 
       if (seasonsError) {
-        console.error('❌ Erreur seasons:', seasonsError)
+        logger.error('❌ Erreur seasons:', seasonsError)
       }
 
       const seasonIds = seasons?.map(s => s.id) || []
-      console.log(`✅ ${seasonIds.length} saisons trouvées`)
+      logger.log(`✅ ${seasonIds.length} saisons trouvées`)
 
       if (seasonIds.length === 0) {
-        console.log('⚠️ Aucune saison trouvée pour cette équipe')
+        logger.log('⚠️ Aucune saison trouvée pour cette équipe')
         setLoading(false)
         return
       }
@@ -95,14 +97,14 @@ export default function StatsPage() {
         .in('season_id', seasonIds)
 
       if (matchesError) {
-        console.error('❌ Erreur matches:', matchesError)
+        logger.error('❌ Erreur matches:', matchesError)
       }
 
       const matchIds = matches?.map(m => m.id) || []
-      console.log(`✅ ${matchIds.length} matchs trouvés`)
+      logger.log(`✅ ${matchIds.length} matchs trouvés`)
 
       if (matchIds.length === 0) {
-        console.log('⚠️ Aucun match trouvé pour ces saisons')
+        logger.log('⚠️ Aucun match trouvé pour ces saisons')
         setLoading(false)
         return
       }
@@ -114,7 +116,7 @@ export default function StatsPage() {
         .in('match_id', matchIds)
 
       const sessionIds = sessions?.map(s => s.id) || []
-      console.log(`✅ ${sessionIds.length} sessions trouvées`)
+      logger.log(`✅ ${sessionIds.length} sessions trouvées`)
 
       if (sessionIds.length === 0) {
         setLoading(false)
@@ -128,11 +130,11 @@ export default function StatsPage() {
         .in('session_id', sessionIds)
 
       if (!allVotes || allVotes.length === 0) {
-        console.log('❌ Aucun vote trouvé')
+        logger.log('❌ Aucun vote trouvé')
         setLoading(false)
         return
       }
-      console.log(`✅ ${allVotes.length} votes trouvés`)
+      logger.log(`✅ ${allVotes.length} votes trouvés`)
 
       // Récupérer tous les membres de l'équipe
       const { data: teamMembers } = await supabase
@@ -151,8 +153,7 @@ export default function StatsPage() {
       const profilesMap: Record<string, { name: string; avatar_url?: string }> = {}
       profiles?.forEach(p => {
         profilesMap[p.id] = {
-          name: p.nickname || 
-                (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8)),
+          name: getDisplayName(p),
           avatar_url: p.avatar_url
         }
       })
@@ -237,10 +238,10 @@ export default function StatsPage() {
         }))
 
       setGhosts(ghostPlayers)
-      console.log('✅ Stats chargées avec succès')
+      logger.log('✅ Stats chargées avec succès')
 
     } catch (error) {
-      console.error('❌ Erreur lors du chargement des stats:', error)
+      logger.error('❌ Erreur lors du chargement des stats:', error)
     } finally {
       setLoading(false)
     }

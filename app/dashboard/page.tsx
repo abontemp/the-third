@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { 
@@ -45,6 +47,33 @@ type Member = {
   email: string | null
   avatar_url: string | null
   display_name: string
+}
+
+type Membership = {
+  role: 'creator' | 'manager' | 'member'
+  team_id: string
+  teams: {
+    id: string
+    name: string
+    sport: string
+    description: string | null
+    team_code: string
+  }
+}
+
+type Profile = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  nickname: string | null
+  email: string | null
+  avatar_url: string | null
+}
+
+type TeamMemberRow = {
+  id: string
+  user_id: string
+  role: 'creator' | 'manager' | 'member'
 }
 
 type Participant = {
@@ -115,11 +144,7 @@ export default function DashboardPage() {
         .eq('id', user.id)
         .single()
 
-      const displayName = profile?.nickname || 
-                         (profile?.first_name && profile?.last_name 
-                           ? `${profile.first_name} ${profile.last_name}` 
-                           : user.email?.split('@')[0] || 'Utilisateur')
-      setCurrentUserName(displayName)
+      setCurrentUserName(getDisplayName(profile))
 
       // Récupérer les équipes de l'utilisateur
       const { data: memberships } = await supabase
@@ -142,39 +167,50 @@ export default function DashboardPage() {
         return
       }
 
-      const teamsData = await Promise.all(
-        memberships.map(async (membership: any) => {
-          const team = membership.teams
+      const teamIds = memberships.map((m: Membership) => m.teams.id)
 
-          // Compter les membres
-          const { count: memberCount } = await supabase
-            .from('team_members')
-            .select('*', { count: 'exact', head: true })
-            .eq('team_id', team.id)
+      // Batch : compter les membres par équipe en une seule requête
+      const { data: allMembers } = await supabase
+        .from('team_members')
+        .select('team_id')
+        .in('team_id', teamIds)
 
-          // Compter les demandes en attente (seulement pour managers/créateurs)
-          let pendingCount = 0
-          if (membership.role === 'creator' || membership.role === 'manager') {
-            const { count } = await supabase
-              .from('join_requests')
-              .select('*', { count: 'exact', head: true })
-              .eq('team_id', team.id)
-              .eq('status', 'pending')
-            pendingCount = count || 0
-          }
+      const memberCountMap: Record<string, number> = {}
+      allMembers?.forEach((m: { team_id: string }) => {
+        memberCountMap[m.team_id] = (memberCountMap[m.team_id] || 0) + 1
+      })
 
-          return {
-            id: team.id,
-            name: team.name,
-            sport: team.sport,
-            description: team.description,
-            team_code: team.team_code,
-            userRole: membership.role,
-            memberCount: memberCount || 0,
-            pendingRequests: pendingCount
-          }
+      // Batch : compter les demandes en attente par équipe en une seule requête
+      const managerTeamIds = memberships
+        .filter((m: Membership) => m.role === 'creator' || m.role === 'manager')
+        .map((m: Membership) => m.teams.id)
+
+      const pendingCountMap: Record<string, number> = {}
+      if (managerTeamIds.length > 0) {
+        const { data: allPending } = await supabase
+          .from('join_requests')
+          .select('team_id')
+          .in('team_id', managerTeamIds)
+          .eq('status', 'pending')
+
+        allPending?.forEach((r: { team_id: string }) => {
+          pendingCountMap[r.team_id] = (pendingCountMap[r.team_id] || 0) + 1
         })
-      )
+      }
+
+      const teamsData = memberships.map((membership: Membership) => {
+        const team = membership.teams
+        return {
+          id: team.id,
+          name: team.name,
+          sport: team.sport,
+          description: team.description,
+          team_code: team.team_code,
+          userRole: membership.role,
+          memberCount: memberCountMap[team.id] || 0,
+          pendingRequests: pendingCountMap[team.id] || 0
+        }
+      })
 
       setTeams(teamsData)
       
@@ -202,7 +238,7 @@ export default function DashboardPage() {
       }
 
     } catch (error) {
-      console.error('Erreur lors du chargement des équipes:', error)
+      logger.error('Erreur lors du chargement des équipes:', error)
     } finally {
       setLoading(false)
     }
@@ -212,7 +248,7 @@ export default function DashboardPage() {
     if (!selectedTeam) return
 
     try {
-      console.log('🔍 Chargement des données pour l\'équipe:', selectedTeam.id)
+      logger.log('🔍 Chargement des données pour l\'équipe:', selectedTeam.id)
       
       // D'abord, récupérer toutes les saisons de cette équipe
       const { data: seasons, error: seasonsError } = await supabase
@@ -220,7 +256,7 @@ export default function DashboardPage() {
         .select('id')
         .eq('team_id', selectedTeam.id)
 
-      console.log('Saisons trouvées:', seasons)
+      logger.log('Saisons trouvées:', seasons)
 
       if (!seasons || seasons.length === 0) {
         setActiveSessions([])
@@ -249,14 +285,14 @@ export default function DashboardPage() {
             setActiveSessions([])
           } else {
             // Créer une map des matchs
-            const matchesMap: Record<string, any> = {}
+            const matchesMap: Record<string, { opponent: string; match_date: string; location: string | null }> = {}
             matches.forEach(m => {
               matchesMap[m.id] = m
             })
 
             // Vérifier pour chaque session si l'utilisateur a voté
             const sessionsWithVoteStatus = await Promise.all(
-              votingSessions.map(async (session: any) => {
+              votingSessions.map(async (session: VotingSession) => {
                 const match = matchesMap[session.match_id]
                 
                 // Vérifier si l'utilisateur est participant
@@ -302,26 +338,21 @@ export default function DashboardPage() {
       }
 
       // Récupérer les profils séparément
-      const userIds = teamMembers.map((m: any) => m.user_id)
+      const userIds = teamMembers.map((m: TeamMemberRow) => m.user_id)
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, nickname, email, avatar_url')
         .in('id', userIds)
 
       // Créer une map des profils
-      const profilesMap: Record<string, any> = {}
+      const profilesMap: Record<string, Profile> = {}
       profiles?.forEach(p => {
         profilesMap[p.id] = p
       })
 
       // Combiner les données
-      const membersData = teamMembers.map((m: any) => {
+      const membersData = teamMembers.map((m: TeamMemberRow) => {
         const profile = profilesMap[m.user_id]
-        const displayName = profile?.nickname || 
-                          (profile?.first_name && profile?.last_name 
-                            ? `${profile.first_name} ${profile.last_name}` 
-                            : profile?.email || `Membre #${m.user_id.substring(0, 8)}`)
-        
         return {
           id: m.id,
           user_id: m.user_id,
@@ -331,7 +362,7 @@ export default function DashboardPage() {
           nickname: profile?.nickname || null,
           email: profile?.email || null,
           avatar_url: profile?.avatar_url || null,
-          display_name: displayName
+          display_name: getDisplayName(profile)
         }
       })
 
@@ -355,15 +386,10 @@ export default function DashboardPage() {
 
           const requestsWithNames = requestsData.map(request => {
             const profile = requestProfiles?.find(p => p.id === request.user_id)
-            const displayName = profile?.nickname || 
-                              (profile?.first_name && profile?.last_name 
-                                ? `${profile.first_name} ${profile.last_name}` 
-                                : profile?.email || 'Utilisateur inconnu')
-            
             return {
               id: request.id,
               user_id: request.user_id,
-              display_name: displayName,
+              display_name: getDisplayName(profile),
               email: profile?.email || '',
               created_at: request.created_at
             }
@@ -376,7 +402,7 @@ export default function DashboardPage() {
       }
 
     } catch (error) {
-      console.error('❌ Erreur lors du chargement des données:', error)
+      logger.error('❌ Erreur lors du chargement des données:', error)
     }
   }
 
@@ -395,7 +421,7 @@ export default function DashboardPage() {
         .select('id, first_name, last_name, nickname, email')
         .in('id', userIds)
 
-      const profilesMap: Record<string, any> = {}
+      const profilesMap: Record<string, Profile> = {}
       profiles?.forEach(p => {
         profilesMap[p.id] = p
       })
@@ -406,10 +432,7 @@ export default function DashboardPage() {
           id: p.id,
           user_id: p.user_id,
           has_voted: p.has_voted,
-          display_name: profile?.nickname || 
-                       (profile?.first_name && profile?.last_name 
-                         ? `${profile.first_name} ${profile.last_name}` 
-                         : profile?.email || 'Inconnu')
+          display_name: getDisplayName(profile)
         }
       })
 
@@ -418,7 +441,7 @@ export default function DashboardPage() {
         [sessionId]: participantsData
       }))
     } catch (error) {
-      console.error('Erreur chargement participants:', error)
+      logger.error('Erreur chargement participants:', error)
     }
   }
 
@@ -480,7 +503,7 @@ export default function DashboardPage() {
       loadTeamData()
 
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       alert('Erreur lors de la clôture du vote')
     } finally {
       setClosingSession(null)
@@ -516,7 +539,7 @@ export default function DashboardPage() {
       setMemberToDelete(null)
       loadTeamData()
     } catch (error) {
-      console.error('Erreur lors de la suppression:', error)
+      logger.error('Erreur lors de la suppression:', error)
       alert('Erreur lors de la suppression du membre')
     } finally {
       setDeleting(false)
@@ -538,7 +561,7 @@ export default function DashboardPage() {
 
       loadTeamData()
     } catch (error) {
-      console.error('Erreur lors de la modification du rôle:', error)
+      logger.error('Erreur lors de la modification du rôle:', error)
       alert('Erreur lors de la modification du rôle')
     }
   }
@@ -548,7 +571,7 @@ export default function DashboardPage() {
       await supabase.auth.signOut()
       router.push('/login')
     } catch (error) {
-      console.error('Erreur lors de la déconnexion:', error)
+      logger.error('Erreur lors de la déconnexion:', error)
       alert('Erreur lors de la déconnexion')
     }
   }
@@ -580,7 +603,7 @@ export default function DashboardPage() {
       // Recharger les données
       loadTeamData()
     } catch (error) {
-      console.error('Erreur lors de l\'acceptation:', error)
+      logger.error('Erreur lors de l\'acceptation:', error)
       alert('Erreur lors de l\'acceptation de la demande')
     } finally {
       setProcessingRequest(null)
@@ -602,7 +625,7 @@ export default function DashboardPage() {
       // Recharger les données
       loadTeamData()
     } catch (error) {
-      console.error('Erreur lors du rejet:', error)
+      logger.error('Erreur lors du rejet:', error)
       alert('Erreur lors du rejet de la demande')
     } finally {
       setProcessingRequest(null)
@@ -840,7 +863,7 @@ export default function DashboardPage() {
                           ) : (
                             <button
                               onClick={() => {
-                                console.log('🗳️ Redirection vers vote:', session.id)
+                                logger.log('🗳️ Redirection vers vote:', session.id)
                                 router.push(`/vote/${session.id}`)
                               }}
                               className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white px-6 py-3 rounded-lg font-bold transition flex items-center gap-2 shadow-lg animate-pulse"

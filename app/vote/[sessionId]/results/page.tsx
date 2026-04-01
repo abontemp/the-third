@@ -2,6 +2,8 @@
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import { logger } from '@/lib/utils/logger'
+import { getDisplayName as getDisplayNameUtil } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, TrendingUp, TrendingDown, Sparkles, Flame, Trophy, Target, Mic } from 'lucide-react'
 
 type PodiumResult = {
@@ -124,16 +126,7 @@ export default function ResultsPage() {
 
       const getDisplayName = (userId: string) => {
         const profile = profilesData?.find(p => p.id === userId)
-        if (!profile) return 'Inconnu'
-        
-        if (profile.nickname?.trim()) return profile.nickname.trim()
-        if (profile.first_name || profile.last_name) {
-          const firstName = profile.first_name?.trim() || ''
-          const lastName = profile.last_name?.trim() || ''
-          return `${firstName} ${lastName}`.trim()
-        }
-        if (profile.email) return profile.email
-        return 'Inconnu'
+        return getDisplayNameUtil(profile)
       }
 
       // Récupérer les noms des lecteurs
@@ -266,7 +259,7 @@ export default function ResultsPage() {
       }
 
     } catch (err) {
-      console.error('Erreur chargement résultats:', err)
+      logger.error('Erreur chargement résultats:', err)
       alert('Erreur lors du chargement des résultats')
     } finally {
       setLoading(false)

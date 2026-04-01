@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/utils/logger'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { Trophy, ArrowRight, SkipForward, Loader } from 'lucide-react'
 
 interface Player {
@@ -30,15 +32,15 @@ export default function PredictionPage() {
 
   const loadPredictionData = async () => {
     try {
-      console.log('🔵 [PREDICTION] Début du chargement pour session:', sessionId)
+      logger.log('🔵 [PREDICTION] Début du chargement pour session:', sessionId)
       
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        console.log('❌ [PREDICTION] Pas d\'utilisateur connecté')
+        logger.log('❌ [PREDICTION] Pas d\'utilisateur connecté')
         router.push('/login')
         return
       }
-      console.log('✅ [PREDICTION] Utilisateur connecté:', user.id)
+      logger.log('✅ [PREDICTION] Utilisateur connecté:', user.id)
       setCurrentUserId(user.id)
 
       const { data: sessionData, error: sessionError } = await supabase
@@ -57,17 +59,17 @@ export default function PredictionPage() {
         .single()
 
       if (sessionError) {
-        console.error('❌ [PREDICTION] Erreur session:', sessionError)
+        logger.error('❌ [PREDICTION] Erreur session:', sessionError)
         alert('Session de vote introuvable')
         router.push('/dashboard')
         return
       }
 
-      console.log('✅ [PREDICTION] Session trouvée:', sessionData)
-      console.log('📊 [PREDICTION] Status de la session:', sessionData.status)
+      logger.log('✅ [PREDICTION] Session trouvée:', sessionData)
+      logger.log('📊 [PREDICTION] Status de la session:', sessionData.status)
 
       if (!sessionData) {
-        console.log('❌ [PREDICTION] Session null')
+        logger.log('❌ [PREDICTION] Session null')
         alert('Session de vote introuvable')
         router.push('/dashboard')
         return
@@ -75,7 +77,7 @@ export default function PredictionPage() {
 
       // ⚠️ NE PAS REDIRIGER SI STATUS N'EST PAS 'OPEN' - Laisser l'utilisateur continuer
       if (sessionData.status !== 'open') {
-        console.log('⚠️ [PREDICTION] Session non ouverte (status:', sessionData.status, '), mais on continue quand même')
+        logger.log('⚠️ [PREDICTION] Session non ouverte (status:', sessionData.status, '), mais on continue quand même')
       }
 
       const match = Array.isArray(sessionData.matches) 
@@ -83,13 +85,13 @@ export default function PredictionPage() {
         : sessionData.matches
 
       if (!match) {
-        console.log('❌ [PREDICTION] Pas de match trouvé')
+        logger.log('❌ [PREDICTION] Pas de match trouvé')
         alert('Match introuvable')
         router.push('/dashboard')
         return
       }
 
-      console.log('✅ [PREDICTION] Match:', match)
+      logger.log('✅ [PREDICTION] Match:', match)
 
       setMatchInfo({
         opponent: match.opponent || '',
@@ -111,10 +113,10 @@ export default function PredictionPage() {
         .eq('status', 'accepted')
 
       if (membersError) {
-        console.error('❌ [PREDICTION] Erreur membres:', membersError)
+        logger.error('❌ [PREDICTION] Erreur membres:', membersError)
       }
 
-      console.log('✅ [PREDICTION] Membres récupérés:', teamMembers?.length || 0)
+      logger.log('✅ [PREDICTION] Membres récupérés:', teamMembers?.length || 0)
 
       const playersList: Player[] = teamMembers?.map((member: {
         user_id: string
@@ -143,13 +145,11 @@ export default function PredictionPage() {
 
         return {
           id: profile.id,
-          name: profile.first_name && profile.last_name
-            ? `${profile.first_name} ${profile.last_name}`
-            : profile.email || 'Joueur inconnu'
+          name: getDisplayName(profile)
         }
       }) || []
 
-      console.log('✅ [PREDICTION] Liste finale des joueurs:', playersList.length)
+      logger.log('✅ [PREDICTION] Liste finale des joueurs:', playersList.length)
       setPlayers(playersList)
 
       const { data: existingPrediction } = await supabase
@@ -160,17 +160,17 @@ export default function PredictionPage() {
         .maybeSingle()
 
       if (existingPrediction) {
-        console.log('✅ [PREDICTION] Prédiction existante trouvée')
+        logger.log('✅ [PREDICTION] Prédiction existante trouvée')
         setTopPrediction(existingPrediction.top_prediction || '')
         setFlopPrediction(existingPrediction.flop_prediction || '')
       } else {
-        console.log('ℹ️ [PREDICTION] Pas de prédiction existante')
+        logger.log('ℹ️ [PREDICTION] Pas de prédiction existante')
       }
 
-      console.log('✅ [PREDICTION] Chargement terminé avec succès')
+      logger.log('✅ [PREDICTION] Chargement terminé avec succès')
       setLoading(false)
     } catch (error) {
-      console.error('❌ [PREDICTION] Erreur générale:', error)
+      logger.error('❌ [PREDICTION] Erreur générale:', error)
       alert('Une erreur est survenue')
       setLoading(false)
     }
@@ -189,7 +189,7 @@ export default function PredictionPage() {
 
     try {
       setSubmitting(true)
-      console.log('🔵 [PREDICTION] Enregistrement des prédictions...')
+      logger.log('🔵 [PREDICTION] Enregistrement des prédictions...')
 
       const { data: existingPrediction } = await supabase
         .from('predictions')
@@ -199,7 +199,7 @@ export default function PredictionPage() {
         .maybeSingle()
 
       if (existingPrediction) {
-        console.log('🔵 [PREDICTION] Mise à jour de la prédiction existante')
+        logger.log('🔵 [PREDICTION] Mise à jour de la prédiction existante')
         const { error } = await supabase
           .from('predictions')
           .update({
@@ -211,7 +211,7 @@ export default function PredictionPage() {
 
         if (error) throw error
       } else {
-        console.log('🔵 [PREDICTION] Création d\'une nouvelle prédiction')
+        logger.log('🔵 [PREDICTION] Création d\'une nouvelle prédiction')
         const { error } = await supabase
           .from('predictions')
           .insert({
@@ -224,18 +224,18 @@ export default function PredictionPage() {
         if (error) throw error
       }
 
-      console.log('✅ [PREDICTION] Prédictions enregistrées')
-      console.log('🔵 [PREDICTION] Redirection vers /vote/' + sessionId)
+      logger.log('✅ [PREDICTION] Prédictions enregistrées')
+      logger.log('🔵 [PREDICTION] Redirection vers /vote/' + sessionId)
       router.push(`/vote/${sessionId}`)
     } catch (error) {
-      console.error('❌ [PREDICTION] Erreur enregistrement:', error)
+      logger.error('❌ [PREDICTION] Erreur enregistrement:', error)
       alert('Erreur lors de l\'enregistrement de la prédiction')
       setSubmitting(false)
     }
   }
 
   const handleSkip = () => {
-    console.log('🔵 [PREDICTION] Skip - Redirection vers /vote/' + sessionId)
+    logger.log('🔵 [PREDICTION] Skip - Redirection vers /vote/' + sessionId)
     router.push(`/vote/${sessionId}`)
   }
 

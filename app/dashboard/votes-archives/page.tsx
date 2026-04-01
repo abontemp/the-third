@@ -1,4 +1,5 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -29,7 +30,7 @@ export default function VotesArchivesPage() {
 
   const loadArchivedSessions = async () => {
     try {
-      console.log('🔍 Chargement des sessions archivées...')
+      logger.log('🔍 Chargement des sessions archivées...')
       setLoading(true)
 
       const { data: { user } } = await supabase.auth.getUser()
@@ -46,12 +47,12 @@ export default function VotesArchivesPage() {
         .single()
 
       if (!membership) {
-        console.log('❌ Pas d\'équipe')
+        logger.log('❌ Pas d\'équipe')
         setLoading(false)
         return
       }
 
-      console.log('✅ Équipe:', membership.team_id)
+      logger.log('✅ Équipe:', membership.team_id)
 
       // Récupérer les sessions terminées
       const { data: sessionsData, error: sessionsError } = await supabase
@@ -75,12 +76,12 @@ export default function VotesArchivesPage() {
         .order('created_at', { ascending: false })
 
       if (sessionsError) {
-        console.error('❌ Erreur sessions:', sessionsError)
+        logger.error('❌ Erreur sessions:', sessionsError)
         setLoading(false)
         return
       }
 
-      console.log('✅ Sessions récupérées:', sessionsData?.length || 0)
+      logger.log('✅ Sessions récupérées:', sessionsData?.length || 0)
 
       if (!sessionsData || sessionsData.length === 0) {
         setArchivedSessions([])
@@ -119,10 +120,10 @@ export default function VotesArchivesPage() {
       setArchivedSessions(formatted)
 
     } catch (err) {
-      console.error('❌ Erreur générale:', err)
+      logger.error('❌ Erreur générale:', err)
     } finally {
       setLoading(false)
-      console.log('✅ Chargement terminé')
+      logger.log('✅ Chargement terminé')
     }
   }
 

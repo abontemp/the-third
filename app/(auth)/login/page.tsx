@@ -1,5 +1,5 @@
 'use client'
-
+import { logger } from '@/lib/utils/logger'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'  // AJOUTE CETTE LIGNE
 import Link from 'next/link'
@@ -54,7 +54,7 @@ export default function LoginPage() {
   }
   
   cleanAll()
-  console.log('✅ Tout le stockage Supabase a été nettoyé')
+  logger.log('✅ Tout le stockage Supabase a été nettoyé')
 }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,13 +91,13 @@ export default function LoginPage() {
         
         // Vérifier si l'utilisateur a des équipes
         const { data: { user: currentUser } } = await supabase.auth.getUser()
-          console.log('👤 Current user:', currentUser)
+          logger.log('👤 Current user:', currentUser)
         const { data: memberships } = await supabase
           .from('team_members')
           .select('team_id')
           .eq('user_id', currentUser?.id)
           
-  console.log('🏆 Memberships:', memberships)
+  logger.log('🏆 Memberships:', memberships)
 
             if (memberships && memberships.length > 0) {
           // A des équipes, rediriger vers dashboard

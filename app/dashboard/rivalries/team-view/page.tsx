@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, Users, TrendingUp, TrendingDown } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
@@ -155,8 +157,7 @@ function TeamRivalriesContent() {
       const playersArray: Array<{ id: string; name: string; avatar: string | null }> = []
 
       profiles?.forEach(p => {
-        const name = p.nickname || 
-                    (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.id.substring(0, 8))
+        const name = getDisplayName(p)
         profilesMap[p.id] = {
           name,
           avatar: p.avatar_url
@@ -217,7 +218,7 @@ function TeamRivalriesContent() {
       setFlopMatrix(flopMatrixArray)
 
     } catch (err) {
-      console.error('Erreur chargement team rivalries:', err)
+      logger.error('Erreur chargement team rivalries:', err)
     } finally {
       setLoading(false)
     }

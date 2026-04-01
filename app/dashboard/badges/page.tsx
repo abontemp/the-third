@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, Award, Trophy, Zap, Target, Shield, Crown, TrendingUp, Star, Users, ChevronDown, ChevronUp } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -99,7 +101,7 @@ export default function BadgesPage() {
 
   const loadData = async () => {
     try {
-      console.log('🔍 Chargement des badges...')
+      logger.log('🔍 Chargement des badges...')
       setLoading(true)
       
       const { data: { user } } = await supabase.auth.getUser()
@@ -118,17 +120,13 @@ export default function BadgesPage() {
         .eq('id', user.id)
         .single()
 
-      const displayName = profile?.nickname || 
-                         (profile?.first_name && profile?.last_name 
-                           ? `${profile.first_name} ${profile.last_name}` 
-                           : 'Vous')
-      setUserName(displayName)
+      setUserName(getDisplayName(profile))
 
       // Récupérer l'équipe sélectionnée depuis le localStorage
       const selectedTeamId = localStorage.getItem('selectedTeamId')
       
       if (!selectedTeamId) {
-        console.log('❌ Pas d\'équipe sélectionnée')
+        logger.log('❌ Pas d\'équipe sélectionnée')
         router.push('/dashboard')
         return
       }
@@ -142,7 +140,7 @@ export default function BadgesPage() {
         .maybeSingle()
 
       if (!membership) {
-        console.log('❌ Pas de membership')
+        logger.log('❌ Pas de membership')
         return
       }
 
@@ -166,10 +164,7 @@ export default function BadgesPage() {
 
           const profilesMap: Record<string, string> = {}
           profiles?.forEach(p => {
-            profilesMap[p.id] = p.nickname || 
-                               (p.first_name && p.last_name 
-                                 ? `${p.first_name} ${p.last_name}` 
-                                 : 'Joueur inconnu')
+            profilesMap[p.id] = getDisplayName(p)
           })
 
           const badgesWithNames = teamBadges.map(b => ({
@@ -191,10 +186,10 @@ export default function BadgesPage() {
       const myBadgeTypes = userBadges?.map(b => b.badge_type) || []
       setMyBadges(myBadgeTypes)
 
-      console.log('✅ Badges chargés:', myBadgeTypes)
+      logger.log('✅ Badges chargés:', myBadgeTypes)
 
     } catch (error) {
-      console.error('❌ Erreur:', error)
+      logger.error('❌ Erreur:', error)
     } finally {
       setLoading(false)
     }

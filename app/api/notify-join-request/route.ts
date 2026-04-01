@@ -1,3 +1,4 @@
+import { logger } from '@/lib/utils/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { createClient } from '@supabase/supabase-js'
@@ -53,7 +54,8 @@ export async function POST(req: NextRequest) {
     }
 
     const emails = profiles.map(p => p.email).filter(Boolean) as string[]
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://the-third.vercel.app'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://the-third.vercel.app')
 
     await resend.emails.send({
       from: 'The Third <noreply@the-third.app>',
@@ -91,7 +93,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('Erreur notification mail:', err)
+    logger.error('Erreur notification mail:', err)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }

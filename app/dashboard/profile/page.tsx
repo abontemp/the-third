@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Camera, Loader, Save } from 'lucide-react'
@@ -54,7 +56,7 @@ export default function ProfilePage() {
       }
 
     } catch (err) {
-      console.error('Erreur chargement profil:', err)
+      logger.error('Erreur chargement profil:', err)
       alert('Erreur lors du chargement du profil')
     } finally {
       setLoading(false)
@@ -118,7 +120,7 @@ export default function ProfilePage() {
       router.push('/dashboard')
 
     } catch (err) {
-      console.error('Erreur sauvegarde:', err)
+      logger.error('Erreur sauvegarde:', err)
       alert('Erreur lors de la sauvegarde du profil')
     } finally {
       setSaving(false)
@@ -239,11 +241,7 @@ export default function ProfilePage() {
             <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
               <h3 className="text-white font-semibold mb-2">Comment vous serez affiché :</h3>
               <p className="text-blue-300 text-lg font-bold">
-                {profile.nickname.trim() ? 
-                  profile.nickname.trim() : 
-                  profile.first_name || profile.last_name ? 
-                    `${profile.first_name} ${profile.last_name}`.trim() : 
-                    profile.email || 'Non défini'}
+                {getDisplayName(profile)}
               </p>
             </div>
 

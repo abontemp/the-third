@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/utils/logger'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Send, AlertCircle, CheckCircle, Loader, Sparkles, Target } from 'lucide-react'
 
 type TeamMember = {
@@ -87,8 +89,8 @@ export default function VoteSetupPage() {
         .select('id, user_id, role')
         .eq('team_id', membership.team_id)
 
-      console.log('Membres chargés:', membersData)
-      console.log('Nombre de membres:', membersData?.length)
+      logger.log('Membres chargés:', membersData)
+      logger.log('Nombre de membres:', membersData?.length)
 
       if (!membersData || membersData.length === 0) {
         setError("Aucun membre dans l'équipe")
@@ -99,18 +101,18 @@ export default function VoteSetupPage() {
       // 🎯 NOUVEAU : Charger les profils de TOUS les membres
       const userIds = membersData.map(m => m.user_id)
       
-      console.log('🔍 Chargement des profils pour:', userIds)
+      logger.log('🔍 Chargement des profils pour:', userIds)
 
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, nickname, avatar_url')
         .in('id', userIds)
 
-      console.log('📝 Profils chargés:', profilesData)
-      console.log('📝 Nombre de profils:', profilesData?.length)
+      logger.log('📝 Profils chargés:', profilesData)
+      logger.log('📝 Nombre de profils:', profilesData?.length)
 
       if (profilesError) {
-        console.error('Erreur profils:', profilesError)
+        logger.error('Erreur profils:', profilesError)
       }
 
       // Créer un mapping des profiles
@@ -121,10 +123,7 @@ export default function VoteSetupPage() {
       
       profilesData?.forEach(profile => {
         profilesMap[profile.id] = {
-          display_name: profile.nickname || 
-                       (profile.first_name && profile.last_name 
-                         ? `${profile.first_name} ${profile.last_name}` 
-                         : profile.id.substring(0, 8)),
+          display_name: getDisplayName(profile),
           avatar_url: profile.avatar_url
         }
       })
@@ -138,7 +137,7 @@ export default function VoteSetupPage() {
         avatar_url: profilesMap[member.user_id]?.avatar_url
       }))
 
-      console.log('✅ Membres formatés:', formattedMembers)
+      logger.log('✅ Membres formatés:', formattedMembers)
       setMembers(formattedMembers)
 
       // Charger les saisons actives
@@ -172,7 +171,7 @@ export default function VoteSetupPage() {
       }
 
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       setError("Erreur lors du chargement")
     } finally {
       setLoading(false)
@@ -274,7 +273,7 @@ export default function VoteSetupPage() {
       }, 1500)
 
     } catch (err: unknown) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       setError(
         typeof err === 'object' && err !== null && 'message' in err
           ? String((err as { message?: string }).message)

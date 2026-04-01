@@ -1,4 +1,5 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
@@ -32,32 +33,32 @@ function RequestsContent() {
 
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        console.log('❌ Pas d\'utilisateur')
+        logger.log('❌ Pas d\'utilisateur')
         router.push('/login')
         return
       }
 
-      console.log('👤 User ID:', user.id)
+      logger.log('👤 User ID:', user.id)
 
       // Récupérer le team_id depuis l'URL
       let teamIdToUse = searchParams.get('team_id')
-      console.log('🔗 Team ID depuis URL:', teamIdToUse)
+      logger.log('🔗 Team ID depuis URL:', teamIdToUse)
 
       if (!teamIdToUse) {
         // Fallback localStorage
         teamIdToUse = localStorage.getItem('current_team_id')
-        console.log('📦 Team ID depuis localStorage:', teamIdToUse)
+        logger.log('📦 Team ID depuis localStorage:', teamIdToUse)
       }
 
       if (!teamIdToUse) {
-        console.log('⚠️ Pas de team_id, récupération depuis DB...')
+        logger.log('⚠️ Pas de team_id, récupération depuis DB...')
         
         const { data: memberships } = await supabase
           .from('team_members')
           .select('team_id, role')
           .eq('user_id', user.id)
 
-        console.log('📋 Memberships trouvés:', memberships)
+        logger.log('📋 Memberships trouvés:', memberships)
 
         if (!memberships || memberships.length === 0) {
           alert('Vous n\'êtes membre d\'aucune équipe')
@@ -74,7 +75,7 @@ function RequestsContent() {
         }
 
         teamIdToUse = managerMembership.team_id
-        console.log('✅ Team ID récupéré depuis DB:', teamIdToUse)
+        logger.log('✅ Team ID récupéré depuis DB:', teamIdToUse)
       }
 
       const finalTeamId: string = teamIdToUse ?? ''
@@ -92,11 +93,11 @@ function RequestsContent() {
         return
       }
 
-      console.log('✅ Team ID à utiliser:', finalTeamId)
-      console.log('✅ Rôle:', membership.role)
+      logger.log('✅ Team ID à utiliser:', finalTeamId)
+      logger.log('✅ Rôle:', membership.role)
       setTeamId(finalTeamId)
 
-      console.log('🔍 Recherche des demandes pour team:', finalTeamId)
+      logger.log('🔍 Recherche des demandes pour team:', finalTeamId)
       
       const { data: requestsData, error: requestsError } = await supabase
         .from('join_requests')
@@ -105,31 +106,31 @@ function RequestsContent() {
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
 
-      console.log('📨 Demandes trouvées:', requestsData?.length || 0)
-      console.log('📋 Détails:', requestsData)
+      logger.log('📨 Demandes trouvées:', requestsData?.length || 0)
+      logger.log('📋 Détails:', requestsData)
 
       if (requestsError) {
-        console.error('❌ Erreur demandes:', requestsError)
+        logger.error('❌ Erreur demandes:', requestsError)
         throw requestsError
       }
 
       if (!requestsData || requestsData.length === 0) {
-        console.log('ℹ️ Aucune demande en attente')
+        logger.log('ℹ️ Aucune demande en attente')
         setRequests([])
         setLoading(false)
         return
       }
 
       const userIds = requestsData.map(r => r.user_id)
-      console.log('👥 User IDs à rechercher:', userIds)
+      logger.log('👥 User IDs à rechercher:', userIds)
       
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, nickname, email')
         .in('id', userIds)
 
-      console.log('👤 Profils trouvés:', profilesData?.length || 0)
-      if (profilesError) console.error('⚠️ Erreur profils:', profilesError)
+      logger.log('👤 Profils trouvés:', profilesData?.length || 0)
+      if (profilesError) logger.error('⚠️ Erreur profils:', profilesError)
 
       const profilesMap: Record<string, { name: string, email: string }> = {}
       profilesData?.forEach(p => {
@@ -148,7 +149,7 @@ function RequestsContent() {
         }
       })
 
-      console.log('🗺️ Profiles map:', profilesMap)
+      logger.log('🗺️ Profiles map:', profilesMap)
 
       const formattedRequests: JoinRequest[] = requestsData.map(r => ({
         id: r.id,
@@ -158,12 +159,12 @@ function RequestsContent() {
         created_at: r.created_at
       }))
 
-      console.log('✅ Demandes formatées:', formattedRequests)
+      logger.log('✅ Demandes formatées:', formattedRequests)
 
       setRequests(formattedRequests)
 
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       alert('Erreur lors du chargement des demandes')
     } finally {
       setLoading(false)
@@ -184,7 +185,7 @@ function RequestsContent() {
           .single()
 
         if (existingMember) {
-          console.log('⚠️ Utilisateur déjà membre, on passe juste au statut approved')
+          logger.log('⚠️ Utilisateur déjà membre, on passe juste au statut approved')
         } else {
           // Ajouter le membre seulement s'il n'existe pas
           const { error: memberError } = await supabase
@@ -219,14 +220,14 @@ function RequestsContent() {
           read: false
         }])
 
-      if (notifError) console.error('Erreur notification:', notifError)
+      if (notifError) logger.error('Erreur notification:', notifError)
 
       alert(action === 'accept' ? '✅ Membre ajouté !' : '❌ Demande refusée')
 
       await loadRequests()
 
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       alert('Erreur lors du traitement de la demande')
     } finally {
       setProcessing(null)

@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Calendar, Users, Loader, Trophy, TrendingUp, TrendingDown, Sparkles, Flame, CheckCircle } from 'lucide-react'
@@ -76,7 +78,7 @@ export default function CreateMatchPage() {
       await loadMembers(currentTeamId)
 
     } catch (err) {
-      console.error('Erreur initialisation:', err)
+      logger.error('Erreur initialisation:', err)
       alert('Erreur lors de l\'initialisation')
       router.push('/dashboard')
     }
@@ -109,22 +111,9 @@ export default function CreateMatchPage() {
       const formattedMembers = membersData.map(member => {
         const profile = profilesData?.find(p => p.id === member.user_id)
         
-        let displayName = 'Utilisateur'
-        if (profile) {
-          if (profile.nickname?.trim()) {
-            displayName = profile.nickname.trim()
-          } else if (profile.first_name || profile.last_name) {
-            const firstName = profile.first_name?.trim() || ''
-            const lastName = profile.last_name?.trim() || ''
-            displayName = `${firstName} ${lastName}`.trim()
-          } else if (profile.email) {
-            displayName = profile.email
-          }
-        }
-
         return {
           user_id: member.user_id,
-          display_name: displayName,
+          display_name: getDisplayName(profile),
           avatar_url: profile?.avatar_url,
           selected: true // Tous sélectionnés par défaut
         }
@@ -133,7 +122,7 @@ export default function CreateMatchPage() {
       setMembers(formattedMembers)
 
     } catch (err) {
-      console.error('Erreur chargement membres:', err)
+      logger.error('Erreur chargement membres:', err)
       alert('Erreur lors du chargement des membres')
     } finally {
       setLoading(false)
@@ -207,7 +196,7 @@ export default function CreateMatchPage() {
         .single()
 
       if (matchError) {
-        console.error('Erreur création match:', matchError)
+        logger.error('Erreur création match:', matchError)
         throw matchError
       }
 
@@ -255,17 +244,17 @@ export default function CreateMatchPage() {
           .insert(notifications)
 
         if (notifError) {
-          console.log('Notifications non envoyées (table peut-être absente):', notifError)
+          logger.log('Notifications non envoyées (table peut-être absente):', notifError)
         }
       } catch (notifErr) {
-        console.log('Erreur notifications (non bloquant):', notifErr)
+        logger.log('Erreur notifications (non bloquant):', notifErr)
       }
 
       alert('Match créé et vote lancé avec succès !')
       router.push('/dashboard')
 
     } catch (err) {
-      console.error('Erreur création match:', err)
+      logger.error('Erreur création match:', err)
       alert('Erreur lors de la création du match')
     } finally {
       setCreating(false)

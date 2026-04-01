@@ -1,5 +1,7 @@
 'use client'
+import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Send, Loader, TrendingUp, TrendingDown, Trophy, Sparkles, Flame, AlertCircle } from 'lucide-react'
@@ -131,23 +133,9 @@ export default function VotePage() {
 
         const formattedMembers = participantsData.map(p => {
           const profile = profilesData?.find(prof => prof.id === p.user_id)
-          
-          let displayName = 'Utilisateur'
-          if (profile) {
-            if (profile.nickname?.trim()) {
-              displayName = profile.nickname.trim()
-            } else if (profile.first_name || profile.last_name) {
-              const firstName = profile.first_name?.trim() || ''
-              const lastName = profile.last_name?.trim() || ''
-              displayName = `${firstName} ${lastName}`.trim()
-            } else if (profile.email) {
-              displayName = profile.email
-            }
-          }
-
           return {
             user_id: p.user_id,
-            display_name: displayName
+            display_name: getDisplayName(profile)
           }
         })
 
@@ -155,7 +143,7 @@ export default function VotePage() {
       }
 
     } catch (err) {
-      console.error('Erreur chargement:', err)
+      logger.error('Erreur chargement:', err)
       alert('Erreur lors du chargement')
     } finally {
       setLoading(false)
@@ -304,12 +292,12 @@ export default function VotePage() {
         .insert([voteData])
 
       if (voteError) {
-        console.error('❌ Erreur insertion vote:', voteError)
-        console.error('📋 Données du vote:', voteData)
+        logger.error('❌ Erreur insertion vote:', voteError)
+        logger.error('📋 Données du vote:', voteData)
         throw voteError
       }
 
-      console.log('✅ Vote inséré avec succès')
+      logger.log('✅ Vote inséré avec succès')
 
       // Marquer comme ayant voté
       const { error: updateError } = await supabase
@@ -319,17 +307,17 @@ export default function VotePage() {
         .eq('user_id', user.id)
 
       if (updateError) {
-        console.error('❌ Erreur mise à jour participant:', updateError)
+        logger.error('❌ Erreur mise à jour participant:', updateError)
         throw updateError
       }
 
-      console.log('✅ Participant marqué comme ayant voté')
+      logger.log('✅ Participant marqué comme ayant voté')
 
       alert('Vote enregistré avec succès ! ✅')
       router.push('/dashboard')
 
     } catch (err) {
-      console.error('Erreur soumission vote:', err)
+      logger.error('Erreur soumission vote:', err)
       alert('Erreur lors de l\'enregistrement du vote')
     } finally {
       setSubmitting(false)

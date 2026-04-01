@@ -2,6 +2,8 @@
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import { logger } from '@/lib/utils/logger'
+import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, ThumbsDown, Trophy, Sparkles, Flame, ChevronRight } from 'lucide-react'
 
 type Vote = {
@@ -33,11 +35,28 @@ type VotingSession = {
   }
 }
 
-// Fonction pour mélanger un tableau
-function shuffleArray<T>(array: T[]): T[] {
+// Shuffle déterministe : même seed = même ordre pour tous les utilisateurs
+function seededRandom(seed: number) {
+  let s = seed
+  return () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff
+    return (s >>> 0) / 0xffffffff
+  }
+}
+
+function hashString(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash)
+}
+
+function shuffleArray<T>(array: T[], seed: string): T[] {
   const shuffled = [...array]
+  const rand = seededRandom(hashString(seed))
   for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
@@ -77,9 +96,9 @@ export default function ReadingPage() {
       const savedTeamId = localStorage.getItem('current_team_id')
       if (savedTeamId) {
         setTeamId(savedTeamId)
-        console.log('✅ Team ID depuis localStorage:', savedTeamId)
+        logger.log('✅ Team ID depuis localStorage:', savedTeamId)
       } else {
-        console.warn('⚠️ Pas de team_id dans localStorage')
+        logger.warn('⚠️ Pas de team_id dans localStorage')
       }
 
       // Récupérer la session
@@ -109,7 +128,7 @@ export default function ReadingPage() {
 
       // Si toujours pas de team_id, on ne peut pas continuer
       if (!savedTeamId) {
-        console.error('❌ Impossible de récupérer le team_id')
+        logger.error('❌ Impossible de récupérer le team_id')
         alert('Erreur: impossible de déterminer l\'équipe')
         router.push('/dashboard')
         return
@@ -129,9 +148,9 @@ export default function ReadingPage() {
       const isUserReader = sessionData.flop_reader_id === user.id || sessionData.top_reader_id === user.id
       setIsReader(isUserReader)
 
-      console.log('👤 User:', user.id)
-      console.log('🎭 Manager:', isUserManager)
-      console.log('📖 Lecteur:', isUserReader)
+      logger.log('👤 User:', user.id)
+      logger.log('🎭 Manager:', isUserManager)
+      logger.log('📖 Lecteur:', isUserReader)
 
       setSession({
         id: sessionData.id,
@@ -185,10 +204,7 @@ export default function ReadingPage() {
 
       const profilesMap: Record<string, string> = {}
       profilesData?.forEach(p => {
-        profilesMap[p.id] = p.nickname || 
-                           (p.first_name && p.last_name 
-                             ? `${p.first_name} ${p.last_name}` 
-                             : 'Joueur')
+        profilesMap[p.id] = getDisplayName(p)
       })
 
       // Formater et MÉLANGER les votes
@@ -207,12 +223,12 @@ export default function ReadingPage() {
         worst_action_player_id: v.worst_action_player_id || undefined,
         worst_action_player_name: v.worst_action_player_id ? profilesMap[v.worst_action_player_id] : undefined,
         worst_action_comment: v.worst_action_comment || undefined
-      })))
+      })), sessionId)
 
       setVotes(formattedVotes)
 
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       alert('Erreur lors du chargement')
     } finally {
       setLoading(false)
@@ -264,7 +280,7 @@ export default function ReadingPage() {
       alert('Lecture terminée ! Direction les résultats 🎉')
       router.push(`/vote/${sessionId}/results`)
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       alert('Erreur lors de la finalisation')
     }
   }
@@ -336,7 +352,7 @@ export default function ReadingPage() {
       alert('⭐ Citation ajoutée au Hall of Fame !')
 
     } catch (err) {
-      console.error('Erreur:', err)
+      logger.error('Erreur:', err)
       alert('Erreur lors de la sauvegarde de la citation')
     } finally {
       setSavingQuote(false)
