@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { logger } from '@/lib/utils/logger'
 import { getDisplayName } from '@/lib/utils/displayName'
-import { ArrowLeft, Loader, ThumbsDown, Trophy, Sparkles, Flame, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Loader, ThumbsDown, Trophy, Sparkles, Flame } from 'lucide-react'
 
 type Vote = {
   id: string
@@ -71,11 +71,11 @@ export default function ReadingPage() {
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState<VotingSession | null>(null)
   const [votes, setVotes] = useState<Vote[]>([])
-  const [currentVoteIndex, setCurrentVoteIndex] = useState(0)
   const [readingPhase, setReadingPhase] = useState<'flop' | 'top' | 'best_action' | 'worst_action' | 'finished'>('flop')
   const [isManager, setIsManager] = useState(false)
   const [isReader, setIsReader] = useState(false)
-  const [savingQuote, setSavingQuote] = useState(false)
+  const [savingQuote, setSavingQuote] = useState<string | null>(null)
+  const [savedQuotes, setSavedQuotes] = useState<Set<string>>(new Set())
   const [teamId, setTeamId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -235,36 +235,18 @@ export default function ReadingPage() {
     }
   }
 
-  const handleNextVote = () => {
-    if (currentVoteIndex < votes.length - 1) {
-      setCurrentVoteIndex(currentVoteIndex + 1)
-    } else {
-      // Fin de cette phase, passer à la suivante
-      if (readingPhase === 'flop') {
-        setReadingPhase('top')
-        setCurrentVoteIndex(0)
-      } else if (readingPhase === 'top') {
-        // Vérifier s'il y a une phase "plus beau geste"
-        if (session?.include_best_action) {
-          setReadingPhase('best_action')
-          setCurrentVoteIndex(0)
-        } else if (session?.include_worst_action) {
-          setReadingPhase('worst_action')
-          setCurrentVoteIndex(0)
-        } else {
-          setReadingPhase('finished')
-        }
-      } else if (readingPhase === 'best_action') {
-        // Vérifier s'il y a une phase "plus beau fail"
-        if (session?.include_worst_action) {
-          setReadingPhase('worst_action')
-          setCurrentVoteIndex(0)
-        } else {
-          setReadingPhase('finished')
-        }
-      } else if (readingPhase === 'worst_action') {
-        setReadingPhase('finished')
-      }
+  const goToNextPhase = () => {
+    if (readingPhase === 'flop') {
+      setReadingPhase('top')
+    } else if (readingPhase === 'top') {
+      if (session?.include_best_action) setReadingPhase('best_action')
+      else if (session?.include_worst_action) setReadingPhase('worst_action')
+      else setReadingPhase('finished')
+    } else if (readingPhase === 'best_action') {
+      if (session?.include_worst_action) setReadingPhase('worst_action')
+      else setReadingPhase('finished')
+    } else if (readingPhase === 'worst_action') {
+      setReadingPhase('finished')
     }
   }
 
@@ -301,13 +283,15 @@ export default function ReadingPage() {
       return
     }
 
+    const quoteKey = `${voteId}-${type}`
+
     try {
-      setSavingQuote(true)
+      setSavingQuote(quoteKey)
 
       // Convertir le type pour memorable_quotes (qui n'accepte que 'top' ou 'flop')
-      const savedType: 'top' | 'flop' = 
-        type === 'best_action' ? 'top' : 
-        type === 'worst_action' ? 'flop' : 
+      const savedType: 'top' | 'flop' =
+        type === 'best_action' ? 'top' :
+        type === 'worst_action' ? 'flop' :
         type
 
       // Vérifier si la citation existe déjà
@@ -319,7 +303,7 @@ export default function ReadingPage() {
         .single()
 
       if (existing) {
-        alert('Cette citation est déjà dans le Hall of Fame !')
+        setSavedQuotes(prev => new Set(prev).add(quoteKey))
         return
       }
 
@@ -330,10 +314,7 @@ export default function ReadingPage() {
         .eq('id', voteId)
         .single()
 
-      if (!voteData) {
-        alert('Vote introuvable')
-        return
-      }
+      if (!voteData) return
 
       // Sauvegarder la citation
       const { error } = await supabase
@@ -349,13 +330,13 @@ export default function ReadingPage() {
 
       if (error) throw error
 
-      alert('⭐ Citation ajoutée au Hall of Fame !')
+      setSavedQuotes(prev => new Set(prev).add(quoteKey))
 
     } catch (err) {
       logger.error('Erreur:', err)
       alert('Erreur lors de la sauvegarde de la citation')
     } finally {
-      setSavingQuote(false)
+      setSavingQuote(null)
     }
   }
 
@@ -383,13 +364,93 @@ export default function ReadingPage() {
     )
   }
 
-  // Contrôle : Manager ou Lecteur peut naviguer
   const canControl = isManager || isReader
-  const currentVote = votes[currentVoteIndex]
+
+  const phaseConfig = {
+    flop: {
+      label: 'FLOP',
+      icon: <ThumbsDown className="text-orange-400 mx-auto mb-3" size={56} />,
+      iconSmall: <ThumbsDown className="text-orange-400 shrink-0" size={20} />,
+      border: 'border-orange-500',
+      bg: 'from-orange-900/40 to-red-900/40',
+      tag: 'bg-orange-500/20 text-orange-300',
+      nextLabel: session?.include_best_action ? 'Passer aux plus beaux gestes' :
+                 session?.include_worst_action ? 'Passer aux plus beaux fails' :
+                 'Passer aux TOP',
+    },
+    top: {
+      label: 'TOP',
+      icon: <Trophy className="text-blue-400 mx-auto mb-3" size={56} />,
+      iconSmall: <Trophy className="text-blue-400 shrink-0" size={20} />,
+      border: 'border-blue-500',
+      bg: 'from-blue-900/40 to-purple-900/40',
+      tag: 'bg-blue-500/20 text-blue-300',
+      nextLabel: session?.include_best_action ? 'Passer aux plus beaux gestes' :
+                 session?.include_worst_action ? 'Passer aux plus beaux fails' :
+                 'Terminer la lecture',
+    },
+    best_action: {
+      label: 'PLUS BEAU GESTE',
+      icon: <Sparkles className="text-amber-400 mx-auto mb-3" size={56} />,
+      iconSmall: <Sparkles className="text-amber-400 shrink-0" size={20} />,
+      border: 'border-amber-500',
+      bg: 'from-amber-900/40 to-yellow-900/40',
+      tag: 'bg-amber-500/20 text-amber-300',
+      nextLabel: session?.include_worst_action ? 'Passer aux plus beaux fails' : 'Terminer la lecture',
+    },
+    worst_action: {
+      label: 'PLUS BEAU FAIL',
+      icon: <Flame className="text-pink-400 mx-auto mb-3" size={56} />,
+      iconSmall: <Flame className="text-pink-400 shrink-0" size={20} />,
+      border: 'border-pink-500',
+      bg: 'from-pink-900/40 to-red-900/40',
+      tag: 'bg-pink-500/20 text-pink-300',
+      nextLabel: 'Terminer la lecture',
+    },
+  }
+
+  const getVoteContent = (vote: Vote, phase: typeof readingPhase) => {
+    if (phase === 'flop') return { player: vote.flop_player_name, comment: vote.flop_comment, playerId: vote.flop_player_id }
+    if (phase === 'top') return { player: vote.top_player_name, comment: vote.top_comment, playerId: vote.top_player_id }
+    if (phase === 'best_action') return { player: vote.best_action_player_name, comment: vote.best_action_comment, playerId: vote.best_action_player_id }
+    if (phase === 'worst_action') return { player: vote.worst_action_player_name, comment: vote.worst_action_comment, playerId: vote.worst_action_player_id }
+    return null
+  }
+
+  const visibleVotes = readingPhase !== 'finished'
+    ? votes.filter(v => {
+        if (readingPhase === 'best_action') return !!v.best_action_comment
+        if (readingPhase === 'worst_action') return !!v.worst_action_comment
+        return true
+      })
+    : []
+
+  if (readingPhase === 'finished') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-2xl p-12 text-center max-w-lg w-full">
+          <Trophy className="text-yellow-400 mx-auto mb-6" size={80} />
+          <h2 className="text-4xl font-bold text-white mb-4">Lecture terminée !</h2>
+          <p className="text-gray-300 mb-8 text-lg">Il est temps de découvrir le podium !</p>
+          {canControl && (
+            <button
+              onClick={handleFinishReading}
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition"
+            >
+              Voir les résultats 🏆
+            </button>
+          )}
+          {!canControl && <p className="text-gray-500 text-sm">En attente du manager…</p>}
+        </div>
+      </div>
+    )
+  }
+
+  const config = phaseConfig[readingPhase]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10">
+      <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <button
@@ -399,12 +460,11 @@ export default function ReadingPage() {
               <ArrowLeft size={20} />
               <span>Dashboard</span>
             </button>
-
             <div className="text-right">
               <h2 className="text-white font-semibold">{session.match.opponent}</h2>
-              <p className="text-gray-400 text-sm">
-                Lecture des votes
-                {isManager && <span className="ml-2 text-yellow-400">(Manager)</span>}
+              <p className="text-gray-400 text-xs">
+                {new Date(session.match.match_date).toLocaleDateString('fr-FR')}
+                {isManager && <span className="ml-2 text-yellow-400">· Manager</span>}
               </p>
             </div>
           </div>
@@ -412,229 +472,71 @@ export default function ReadingPage() {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        {readingPhase === 'finished' ? (
-          // ÉCRAN DE FIN
-          <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-2xl p-12 text-center">
-            <Trophy className="text-yellow-400 mx-auto mb-6" size={80} />
-            <h2 className="text-4xl font-bold text-white mb-4">🎉 Lecture terminée ! 🎉</h2>
-            <p className="text-gray-300 mb-8 text-lg">
-              Il est temps de découvrir le podium !
-            </p>
 
-            {canControl && (
-              <button
-                onClick={handleFinishReading}
-                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition"
+        {/* BANNIÈRE DE PHASE */}
+        <div className={`bg-gradient-to-r ${config.bg} border-2 ${config.border} rounded-2xl p-6 text-center mb-8`}>
+          {config.icon}
+          <h2 className="text-3xl font-bold text-white mb-1">{config.label}</h2>
+          <p className="text-gray-400 text-sm">{visibleVotes.length} vote{visibleVotes.length > 1 ? 's' : ''}</p>
+        </div>
+
+        {/* LISTE DE TOUS LES VOTES */}
+        <div className="space-y-4 mb-8">
+          {visibleVotes.map((vote, index) => {
+            const content = getVoteContent(vote, readingPhase)
+            if (!content?.player || !content?.comment) return null
+            const quoteKey = `${vote.id}-${readingPhase}`
+            const isSaved = savedQuotes.has(quoteKey)
+            const isSaving = savingQuote === quoteKey
+
+            return (
+              <div
+                key={vote.id}
+                className={`bg-slate-800/60 border ${config.border} border-opacity-30 rounded-xl p-5`}
               >
-                Voir les résultats 🏆
-              </button>
-            )}
-          </div>
+                <div className="flex items-start gap-3 mb-3">
+                  <span className="text-gray-500 text-sm font-mono w-6 shrink-0 pt-0.5">{index + 1}.</span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      {config.iconSmall}
+                      <span className="text-white font-bold text-lg">{content.player}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${config.tag}`}>{config.label}</span>
+                    </div>
+                    <p className="text-gray-200 text-base leading-relaxed italic">"{content.comment}"</p>
+                  </div>
+                </div>
+
+                {canControl && content.playerId && (
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={() => handleSaveQuote(vote.id, content.playerId!, content.comment!, readingPhase as 'top' | 'flop' | 'best_action' | 'worst_action')}
+                      disabled={isSaving || isSaved}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                        isSaved
+                          ? 'bg-yellow-600/30 text-yellow-400 cursor-default'
+                          : 'bg-yellow-600 hover:bg-yellow-700 text-white disabled:opacity-50'
+                      }`}
+                    >
+                      <span>{isSaved ? '★' : '⭐'}</span>
+                      <span>{isSaved ? 'Dans le Hall of Fame' : 'Hall of Fame'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* BOUTON PHASE SUIVANTE */}
+        {canControl ? (
+          <button
+            onClick={goToNextPhase}
+            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-4 rounded-xl font-semibold text-lg transition flex items-center justify-center gap-2"
+          >
+            {readingPhase === 'flop' ? 'Passer aux TOP →' : config.nextLabel + ' →'}
+          </button>
         ) : (
-          <>
-            {/* BANNIÈRE DE PHASE */}
-            <div className="mb-8">
-              {readingPhase === 'flop' && (
-                <div className="bg-gradient-to-r from-orange-900/50 to-red-900/50 border-2 border-orange-500 rounded-2xl p-6 text-center">
-                  <ThumbsDown className="text-orange-400 mx-auto mb-3" size={64} />
-                  <h2 className="text-4xl font-bold text-white mb-2">PHASE FLOP</h2>
-                  <p className="text-gray-300">Lecture des votes FLOP</p>
-                  <p className="text-orange-400 font-semibold mt-2">Vote {currentVoteIndex + 1}/{votes.length}</p>
-                </div>
-              )}
-
-              {readingPhase === 'top' && (
-                <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 border-2 border-blue-500 rounded-2xl p-6 text-center">
-                  <Trophy className="text-blue-400 mx-auto mb-3" size={64} />
-                  <h2 className="text-4xl font-bold text-white mb-2">PHASE TOP</h2>
-                  <p className="text-gray-300">Lecture des votes TOP</p>
-                  <p className="text-blue-400 font-semibold mt-2">Vote {currentVoteIndex + 1}/{votes.length}</p>
-                </div>
-              )}
-
-              {readingPhase === 'best_action' && (
-                <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 border-2 border-green-500 rounded-2xl p-6 text-center">
-                  <Sparkles className="text-green-400 mx-auto mb-3" size={64} />
-                  <h2 className="text-4xl font-bold text-white mb-2">PLUS BEAU GESTE</h2>
-                  <p className="text-gray-300">Lecture des plus beaux gestes</p>
-                  <p className="text-green-400 font-semibold mt-2">Vote {currentVoteIndex + 1}/{votes.length}</p>
-                </div>
-              )}
-
-              {readingPhase === 'worst_action' && (
-                <div className="bg-gradient-to-r from-pink-900/50 to-red-900/50 border-2 border-pink-500 rounded-2xl p-6 text-center">
-                  <Flame className="text-pink-400 mx-auto mb-3" size={64} />
-                  <h2 className="text-4xl font-bold text-white mb-2">PLUS BEAU FAIL</h2>
-                  <p className="text-gray-300">Lecture des plus beaux fails</p>
-                  <p className="text-pink-400 font-semibold mt-2">Vote {currentVoteIndex + 1}/{votes.length}</p>
-                </div>
-              )}
-            </div>
-
-            {/* CONTENU DU VOTE */}
-            <div className="bg-slate-800/50 border border-white/10 rounded-2xl p-8">
-              {readingPhase === 'flop' && (
-                <>
-                  <div className="text-center mb-6">
-                    <ThumbsDown className="text-orange-400 mx-auto mb-3" size={48} />
-                    <h3 className="text-3xl font-bold text-white mb-2">
-                      {currentVote.flop_player_name}
-                    </h3>
-                    <p className="text-gray-400">Vote FLOP</p>
-                  </div>
-                  <div className="bg-slate-700/50 rounded-xl p-6">
-                    <p className="text-xl text-white leading-relaxed mb-4">
-                      {currentVote.flop_comment}
-                    </p>
-                    
-                    {canControl && (
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => handleSaveQuote(currentVote.id, currentVote.flop_player_id, currentVote.flop_comment, 'flop')}
-                          disabled={savingQuote}
-                          className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-semibold transition disabled:opacity-50"
-                        >
-                          <span>⭐</span>
-                          <span>Hall of Fame</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {readingPhase === 'top' && (
-                <>
-                  <div className="text-center mb-6">
-                    <Trophy className="text-blue-400 mx-auto mb-3" size={48} />
-                    <h3 className="text-3xl font-bold text-white mb-2">
-                      {currentVote.top_player_name}
-                    </h3>
-                    <p className="text-gray-400">Vote TOP</p>
-                  </div>
-                  <div className="bg-slate-700/50 rounded-xl p-6">
-                    <p className="text-xl text-white leading-relaxed mb-4">
-                      {currentVote.top_comment}
-                    </p>
-                    
-                    {canControl && (
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => handleSaveQuote(currentVote.id, currentVote.top_player_id, currentVote.top_comment, 'top')}
-                          disabled={savingQuote}
-                          className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-semibold transition disabled:opacity-50"
-                        >
-                          <span>⭐</span>
-                          <span>Hall of Fame</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {readingPhase === 'best_action' && (
-                <>
-                  {currentVote.best_action_player_name && currentVote.best_action_comment && currentVote.best_action_player_id ? (
-                    <>
-                      <div className="text-center mb-6">
-                        <Sparkles className="text-green-400 mx-auto mb-3" size={48} />
-                        <h3 className="text-3xl font-bold text-white mb-2">
-                          {currentVote.best_action_player_name}
-                        </h3>
-                        <p className="text-gray-400">Plus beau geste</p>
-                      </div>
-                      <div className="bg-slate-700/50 rounded-xl p-6">
-                        <p className="text-xl text-white leading-relaxed mb-4">
-                          {currentVote.best_action_comment}
-                        </p>
-                        
-                        {canControl && (
-                          <div className="flex justify-end">
-                            <button
-                              onClick={() => handleSaveQuote(currentVote.id, currentVote.best_action_player_id!, currentVote.best_action_comment!, 'best_action')}
-                              disabled={savingQuote}
-                              className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-semibold transition disabled:opacity-50"
-                            >
-                              <span>⭐</span>
-                              <span>Hall of Fame</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-center text-gray-400 py-8">
-                      <p>Aucun plus beau geste pour ce vote</p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {readingPhase === 'worst_action' && (
-                <>
-                  {currentVote.worst_action_player_name && currentVote.worst_action_comment && currentVote.worst_action_player_id ? (
-                    <>
-                      <div className="text-center mb-6">
-                        <Flame className="text-pink-400 mx-auto mb-3" size={48} />
-                        <h3 className="text-3xl font-bold text-white mb-2">
-                          {currentVote.worst_action_player_name}
-                        </h3>
-                        <p className="text-gray-400">Plus beau fail</p>
-                      </div>
-                      <div className="bg-slate-700/50 rounded-xl p-6">
-                        <p className="text-xl text-white leading-relaxed mb-4">
-                          {currentVote.worst_action_comment}
-                        </p>
-                        
-                        {canControl && (
-                          <div className="flex justify-end">
-                            <button
-                              onClick={() => handleSaveQuote(currentVote.id, currentVote.worst_action_player_id!, currentVote.worst_action_comment!, 'worst_action')}
-                              disabled={savingQuote}
-                              className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-semibold transition disabled:opacity-50"
-                            >
-                              <span>⭐</span>
-                              <span>Hall of Fame</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-center text-gray-400 py-8">
-                      <p>Aucun plus beau fail pour ce vote</p>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* BOUTON SUIVANT */}
-            {canControl && (
-              <div className="mt-8">
-                <button
-                  onClick={handleNextVote}
-                  className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-4 rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2"
-                >
-                  {currentVoteIndex < votes.length - 1 ? 'Vote suivant' : 
-                   readingPhase === 'flop' ? 'Passer aux TOP' :
-                   readingPhase === 'top' && session.include_best_action ? 'Passer aux plus beaux gestes' :
-                   readingPhase === 'top' && session.include_worst_action ? 'Passer aux plus beaux fails' :
-                   readingPhase === 'best_action' && session.include_worst_action ? 'Passer aux plus beaux fails' :
-                   'Terminer la lecture'}
-                  <ChevronRight size={20} />
-                </button>
-              </div>
-            )}
-
-            {!canControl && (
-              <div className="mt-8 text-center text-gray-400">
-                <p>Seul le lecteur ou un manager peut avancer</p>
-              </div>
-            )}
-          </>
+          <p className="text-center text-gray-500 text-sm">Seul le lecteur ou un manager peut avancer</p>
         )}
       </div>
     </div>
