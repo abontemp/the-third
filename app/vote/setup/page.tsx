@@ -242,8 +242,9 @@ export default function VoteSetupPage() {
         .insert([{
           match_id: match.id,
           status: 'open',
-          enable_predictions: formData.enablePredictions,
-          enable_best_move: formData.enableBestMove
+          include_predictions: formData.enablePredictions,
+          include_best_action: formData.enableBestMove,
+          include_worst_action: false
         }])
         .select()
         .single()
