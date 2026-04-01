@@ -67,7 +67,7 @@ type Profile = {
   last_name: string | null
   nickname: string | null
   email: string | null
-  avatar_url: string | null
+  avatar_url?: string | null
 }
 
 type TeamMemberRow = {
@@ -147,7 +147,7 @@ export default function DashboardPage() {
       setCurrentUserName(getDisplayName(profile))
 
       // Récupérer les équipes de l'utilisateur
-      const { data: memberships } = await supabase
+      const { data: membershipsRaw } = await supabase
         .from('team_members')
         .select(`
           role,
@@ -162,12 +162,14 @@ export default function DashboardPage() {
         `)
         .eq('user_id', user.id)
 
-      if (!memberships || memberships.length === 0) {
+      if (!membershipsRaw || membershipsRaw.length === 0) {
         router.push('/onboarding')
         return
       }
 
-      const teamIds = memberships.map((m: Membership) => m.teams.id)
+      const memberships = membershipsRaw as unknown as Membership[]
+
+      const teamIds = memberships.map(m => m.teams.id)
 
       // Batch : compter les membres par équipe en une seule requête
       const { data: allMembers } = await supabase
@@ -182,8 +184,8 @@ export default function DashboardPage() {
 
       // Batch : compter les demandes en attente par équipe en une seule requête
       const managerTeamIds = memberships
-        .filter((m: Membership) => m.role === 'creator' || m.role === 'manager')
-        .map((m: Membership) => m.teams.id)
+        .filter(m => m.role === 'creator' || m.role === 'manager')
+        .map(m => m.teams.id)
 
       const pendingCountMap: Record<string, number> = {}
       if (managerTeamIds.length > 0) {
@@ -198,7 +200,7 @@ export default function DashboardPage() {
         })
       }
 
-      const teamsData = memberships.map((membership: Membership) => {
+      const teamsData = memberships.map(membership => {
         const team = membership.teams
         return {
           id: team.id,
@@ -292,7 +294,7 @@ export default function DashboardPage() {
 
             // Vérifier pour chaque session si l'utilisateur a voté
             const sessionsWithVoteStatus = await Promise.all(
-              votingSessions.map(async (session: VotingSession) => {
+              (votingSessions as unknown as VotingSession[]).map(async (session: VotingSession) => {
                 const match = matchesMap[session.match_id]
                 
                 // Vérifier si l'utilisateur est participant
