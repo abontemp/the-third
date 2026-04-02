@@ -300,7 +300,7 @@ export default function ReadingPage() {
         .select('id')
         .eq('vote_id', voteId)
         .eq('vote_type', savedType)
-        .single()
+        .maybeSingle()
 
       if (existing) {
         setSavedQuotes(prev => new Set(prev).add(quoteKey))
