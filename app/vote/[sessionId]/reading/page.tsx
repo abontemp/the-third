@@ -25,6 +25,7 @@ type Vote = {
 
 type VotingSession = {
   id: string
+  team_id: string
   flop_reader_id: string | null
   top_reader_id: string | null
   include_best_action: boolean
@@ -92,20 +93,14 @@ export default function ReadingPage() {
         return
       }
 
-      // Récupérer le team_id depuis localStorage (priorité)
       const savedTeamId = localStorage.getItem('current_team_id')
-      if (savedTeamId) {
-        setTeamId(savedTeamId)
-        logger.log('✅ Team ID depuis localStorage:', savedTeamId)
-      } else {
-        logger.warn('⚠️ Pas de team_id dans localStorage')
-      }
 
       // Récupérer la session
       const { data: sessionData } = await supabase
         .from('voting_sessions')
         .select(`
           id,
+          team_id,
           flop_reader_id,
           top_reader_id,
           include_best_action,
@@ -126,8 +121,12 @@ export default function ReadingPage() {
 
       const matchData = Array.isArray(sessionData.matches) ? sessionData.matches[0] : sessionData.matches
 
-      // Si toujours pas de team_id, on ne peut pas continuer
-      if (!savedTeamId) {
+      // Récupérer le team_id depuis la session (priorité sur localStorage)
+      const resolvedTeamId = sessionData.team_id || savedTeamId
+      if (resolvedTeamId) {
+        setTeamId(resolvedTeamId)
+        logger.log('✅ Team ID:', resolvedTeamId)
+      } else {
         logger.error('❌ Impossible de récupérer le team_id')
         alert('Erreur: impossible de déterminer l\'équipe')
         router.push('/dashboard')
@@ -139,6 +138,7 @@ export default function ReadingPage() {
         .from('team_members')
         .select('role')
         .eq('user_id', user.id)
+        .eq('team_id', resolvedTeamId)
         .single()
 
       const isUserManager = membership?.role === 'manager' || membership?.role === 'creator'
@@ -154,6 +154,7 @@ export default function ReadingPage() {
 
       setSession({
         id: sessionData.id,
+        team_id: resolvedTeamId,
         flop_reader_id: sessionData.flop_reader_id,
         top_reader_id: sessionData.top_reader_id,
         include_best_action: sessionData.include_best_action,
