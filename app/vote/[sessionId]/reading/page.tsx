@@ -25,7 +25,6 @@ type Vote = {
 
 type VotingSession = {
   id: string
-  team_id: string
   flop_reader_id: string | null
   top_reader_id: string | null
   include_best_action: boolean
@@ -100,14 +99,16 @@ export default function ReadingPage() {
         .from('voting_sessions')
         .select(`
           id,
-          team_id,
           flop_reader_id,
           top_reader_id,
           include_best_action,
           include_worst_action,
           matches (
             opponent,
-            match_date
+            match_date,
+            seasons (
+              team_id
+            )
           )
         `)
         .eq('id', sessionId)
@@ -120,9 +121,10 @@ export default function ReadingPage() {
       }
 
       const matchData = Array.isArray(sessionData.matches) ? sessionData.matches[0] : sessionData.matches
+      const seasonData = Array.isArray(matchData?.seasons) ? matchData?.seasons[0] : matchData?.seasons
 
-      // Récupérer le team_id depuis la session (priorité sur localStorage)
-      const resolvedTeamId = sessionData.team_id || savedTeamId
+      // Récupérer le team_id depuis la session (via match → season) ou localStorage en fallback
+      const resolvedTeamId = seasonData?.team_id || savedTeamId
       if (resolvedTeamId) {
         setTeamId(resolvedTeamId)
         logger.log('✅ Team ID:', resolvedTeamId)
@@ -154,7 +156,6 @@ export default function ReadingPage() {
 
       setSession({
         id: sessionData.id,
-        team_id: resolvedTeamId,
         flop_reader_id: sessionData.flop_reader_id,
         top_reader_id: sessionData.top_reader_id,
         include_best_action: sessionData.include_best_action,
