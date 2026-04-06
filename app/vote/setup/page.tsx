@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/utils/logger'
+import { sendPushToUsers } from '@/lib/utils/sendPush'
 import { ArrowLeft, Send, AlertCircle, CheckCircle, Loader, Sparkles, Target } from 'lucide-react'
 
 type Season = {
@@ -152,6 +153,23 @@ export default function VoteSetupPage() {
         .single()
 
       if (sessionError) throw sessionError
+
+      // Notifier tous les membres de l'équipe (sans bloquer)
+      const selectedTeamId = localStorage.getItem('selectedTeamId')
+      if (selectedTeamId) {
+        supabase
+          .from('team_members')
+          .select('user_id')
+          .eq('team_id', selectedTeamId)
+          .then(({ data: members }) => {
+            const userIds = members?.map(m => m.user_id) || []
+            sendPushToUsers(userIds, {
+              title: '🗳️ Vote ouvert !',
+              body: `Un vote est ouvert pour le match vs ${formData.opponent}. Rejoins-le depuis ton dashboard !`,
+              url: '/dashboard',
+            })
+          })
+      }
 
       setSuccess("Session de vote créée ! Les membres peuvent maintenant rejoindre depuis leur dashboard.")
 

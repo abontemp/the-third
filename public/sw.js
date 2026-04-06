@@ -7,7 +7,6 @@ const STATIC_ASSETS = [
   '/manifest.webmanifest',
 ]
 
-// Installation : mise en cache des ressources statiques
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
@@ -15,7 +14,6 @@ self.addEventListener('install', (event) => {
   self.skipWaiting()
 })
 
-// Activation : suppression des anciens caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -25,20 +23,15 @@ self.addEventListener('activate', (event) => {
   self.clients.claim()
 })
 
-// Fetch : network-first pour les API Supabase, cache-first pour les assets statiques
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
 
-  // Toujours passer par le réseau pour Supabase et les API Next.js
   if (
     url.hostname.includes('supabase.co') ||
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/_next/data/')
-  ) {
-    return
-  }
+  ) return
 
-  // Pour les assets statiques (_next/static), cache-first
   if (url.pathname.startsWith('/_next/static/')) {
     event.respondWith(
       caches.match(event.request).then(
@@ -52,7 +45,6 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Pour tout le reste : network-first avec fallback cache
   event.respondWith(
     fetch(event.request)
       .then((response) => {
@@ -63,5 +55,47 @@ self.addEventListener('fetch', (event) => {
         return response
       })
       .catch(() => caches.match(event.request))
+  )
+})
+
+// ─── PUSH NOTIFICATIONS ───────────────────────────────────────────
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return
+
+  let payload
+  try {
+    payload = event.data.json()
+  } catch {
+    payload = { title: 'The Third', body: event.data.text() }
+  }
+
+  const options = {
+    body: payload.body,
+    icon: '/logo.svg',
+    badge: '/logo.svg',
+    data: { url: payload.url || '/dashboard' },
+    vibrate: [200, 100, 200],
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, options)
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const url = event.notification.data?.url || '/dashboard'
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(url)
+          return client.focus()
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(url)
+    })
   )
 })

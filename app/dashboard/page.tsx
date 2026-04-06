@@ -1,5 +1,6 @@
 'use client'
 import { logger } from '@/lib/utils/logger'
+import { sendPushToUsers } from '@/lib/utils/sendPush'
 import { createClient } from '@/lib/supabase/client'
 import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter } from 'next/navigation'
@@ -525,8 +526,26 @@ export default function DashboardPage() {
 
       if (error) throw error
 
+      // Notifier les lecteurs
+      sendPushToUsers(
+        [topReader.user_id, flopReader.user_id],
+        {
+          title: '🎤 Tu es lecteur !',
+          body: `Tu as été désigné lecteur pour le vote vs ${session.matches.opponent}. Prépare-toi !`,
+          url: `/vote/${session.id}/reading`,
+        }
+      )
+
+      // Notifier tous les participants que le vote est clôturé
+      const allParticipantIds = participants.map(p => p.user_id)
+      sendPushToUsers(allParticipantIds, {
+        title: '🔒 Vote clôturé',
+        body: `Le vote vs ${session.matches.opponent} est terminé. La lecture commence bientôt !`,
+        url: `/vote/${session.id}/reading`,
+      })
+
       toast.success(`Vote clôturé ! Lecteur TOP : ${topReader.display_name} — Lecteur FLOP : ${flopReader.display_name}`)
-      
+
       loadTeamData()
 
     } catch (err) {

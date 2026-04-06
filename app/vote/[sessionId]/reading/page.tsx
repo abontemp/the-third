@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { logger } from '@/lib/utils/logger'
+import { sendPushToUsers } from '@/lib/utils/sendPush'
 import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, ThumbsDown, Trophy, Sparkles, Flame } from 'lucide-react'
 import { toast } from 'sonner'
@@ -261,6 +262,23 @@ export default function ReadingPage() {
         .eq('id', sessionId)
 
       if (error) throw error
+
+      // Notifier tous les participants que les résultats sont disponibles
+      const { data: participants } = await supabase
+        .from('session_participants')
+        .select('user_id')
+        .eq('session_id', sessionId)
+
+      if (participants?.length) {
+        sendPushToUsers(
+          participants.map(p => p.user_id),
+          {
+            title: '🏆 Résultats disponibles !',
+            body: `La lecture est terminée. Découvre le podium du match vs ${session?.match.opponent} !`,
+            url: `/vote/${sessionId}/results`,
+          }
+        )
+      }
 
       toast.success('Lecture terminée ! Direction les résultats')
       router.push(`/vote/${sessionId}/results`)
