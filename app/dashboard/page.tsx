@@ -117,6 +117,7 @@ export default function DashboardPage() {
   const [sessionParticipants, setSessionParticipants] = useState<Record<string, Participant[]>>({})
   const [closingSession, setClosingSession] = useState<string | null>(null)
   const [joiningSession, setJoiningSession] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     loadTeams()
@@ -807,7 +808,21 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  setRefreshing(true)
+                  await loadTeamData()
+                  setRefreshing(false)
+                }}
+                disabled={refreshing}
+                className="flex items-center gap-2 bg-slate-800/50 hover:bg-slate-700/50 text-gray-400 hover:text-white px-3 py-2 rounded-lg border border-white/10 transition disabled:opacity-50"
+                title="Rafraîchir"
+              >
+                <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+                <span className="hidden sm:inline text-sm font-medium">Actualiser</span>
+              </button>
+
               <button
                 onClick={() => router.push('/dashboard/profile')}
                 className="hidden sm:flex items-center gap-3 bg-slate-800/50 px-4 py-2 rounded-lg border border-white/10 hover:border-blue-500/50 transition"
@@ -817,10 +832,10 @@ export default function DashboardPage() {
                 </div>
                 <span className="text-white text-sm font-medium">{currentUserName}</span>
               </button>
-              
+
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 hover:text-red-300 px-4 py-2 rounded-lg border border-red-500/30 hover:border-red-500/50 transition"
+                className="flex items-center gap-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 hover:text-red-300 px-3 py-2 rounded-lg border border-red-500/30 hover:border-red-500/50 transition"
                 title="Se déconnecter"
               >
                 <LogOut size={18} />
