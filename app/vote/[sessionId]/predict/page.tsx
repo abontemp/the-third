@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/utils/logger'
 import { getDisplayName } from '@/lib/utils/displayName'
 import { Trophy, ArrowRight, SkipForward, Loader } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface Player {
   id: string
@@ -60,7 +61,7 @@ export default function PredictionPage() {
 
       if (sessionError) {
         logger.error('❌ [PREDICTION] Erreur session:', sessionError)
-        alert('Session de vote introuvable')
+        toast.error('Session de vote introuvable')
         router.push('/dashboard')
         return
       }
@@ -70,7 +71,7 @@ export default function PredictionPage() {
 
       if (!sessionData) {
         logger.log('❌ [PREDICTION] Session null')
-        alert('Session de vote introuvable')
+        toast.error('Session de vote introuvable')
         router.push('/dashboard')
         return
       }
@@ -86,7 +87,7 @@ export default function PredictionPage() {
 
       if (!match) {
         logger.log('❌ [PREDICTION] Pas de match trouvé')
-        alert('Match introuvable')
+        toast.error('Match introuvable')
         router.push('/dashboard')
         return
       }
@@ -171,19 +172,19 @@ export default function PredictionPage() {
       setLoading(false)
     } catch (error) {
       logger.error('❌ [PREDICTION] Erreur générale:', error)
-      alert('Une erreur est survenue')
+      toast.error('Une erreur est survenue')
       setLoading(false)
     }
   }
 
   const handleSubmit = async () => {
     if (!topPrediction || !flopPrediction) {
-      alert('Veuillez sélectionner vos deux prédictions')
+      toast.warning('Veuillez sélectionner vos deux prédictions')
       return
     }
 
     if (topPrediction === flopPrediction) {
-      alert('Vous ne pouvez pas prédire la même personne pour TOP et FLOP')
+      toast.warning('Vous ne pouvez pas prédire la même personne pour TOP et FLOP')
       return
     }
 
@@ -229,7 +230,7 @@ export default function PredictionPage() {
       router.push(`/vote/${sessionId}`)
     } catch (error) {
       logger.error('❌ [PREDICTION] Erreur enregistrement:', error)
-      alert('Erreur lors de l\'enregistrement de la prédiction')
+      toast.error('Erreur lors de l\'enregistrement de la prédiction')
       setSubmitting(false)
     }
   }

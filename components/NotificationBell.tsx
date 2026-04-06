@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Bell, Check } from 'lucide-react'
+import { logger } from '@/lib/utils/logger'
 
 interface Notification {
   id: string
@@ -59,7 +60,7 @@ export default function NotificationBell() {
         setUnreadCount(data.filter(n => !n.read).length)
       }
     } catch (error) {
-      console.error('Erreur chargement notifications:', error)
+      logger.error('Erreur chargement notifications:', error)
     }
   }
 
@@ -72,7 +73,7 @@ export default function NotificationBell() {
 
       loadNotifications()
     } catch (error) {
-      console.error('Erreur:', error)
+      logger.error('Erreur:', error)
     }
   }
 
@@ -89,7 +90,7 @@ export default function NotificationBell() {
 
       loadNotifications()
     } catch (error) {
-      console.error('Erreur:', error)
+      logger.error('Erreur:', error)
     }
   }
 

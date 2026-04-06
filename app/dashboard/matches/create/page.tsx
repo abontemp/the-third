@@ -5,6 +5,7 @@ import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Calendar, Users, Loader, Trophy, TrendingUp, TrendingDown, Sparkles, Flame, CheckCircle } from 'lucide-react'
+import { toast } from 'sonner'
 
 type TeamMember = {
   user_id: string
@@ -69,7 +70,7 @@ export default function CreateMatchPage() {
       }
 
       if (!currentTeamId) {
-        alert('Aucune équipe trouvée. Veuillez d\'abord rejoindre ou créer une équipe.')
+        toast.warning('Aucune équipe trouvée. Veuillez d\'abord rejoindre ou créer une équipe.')
         router.push('/dashboard')
         return
       }
@@ -79,7 +80,7 @@ export default function CreateMatchPage() {
 
     } catch (err) {
       logger.error('Erreur initialisation:', err)
-      alert('Erreur lors de l\'initialisation')
+      toast.error('Erreur lors de l\'initialisation')
       router.push('/dashboard')
     }
   }
@@ -96,7 +97,7 @@ export default function CreateMatchPage() {
         .eq('status', 'accepted')
 
       if (!membersData || membersData.length === 0) {
-        alert('Aucun membre trouvé dans cette équipe')
+        toast.warning('Aucun membre trouvé dans cette équipe')
         router.push('/dashboard')
         return
       }
@@ -123,7 +124,7 @@ export default function CreateMatchPage() {
 
     } catch (err) {
       logger.error('Erreur chargement membres:', err)
-      alert('Erreur lors du chargement des membres')
+      toast.error('Erreur lors du chargement des membres')
     } finally {
       setLoading(false)
     }
@@ -145,18 +146,18 @@ export default function CreateMatchPage() {
 
   const handleCreateMatch = async () => {
     if (!opponent.trim()) {
-      alert('Veuillez entrer le nom de l\'adversaire')
+      toast.warning('Veuillez entrer le nom de l\'adversaire')
       return
     }
 
     if (!matchDate) {
-      alert('Veuillez sélectionner une date de match')
+      toast.warning('Veuillez sélectionner une date de match')
       return
     }
 
     const selectedMembers = members.filter(m => m.selected)
     if (selectedMembers.length < 2) {
-      alert('Sélectionnez au moins 2 participants pour le vote')
+      toast.warning('Sélectionnez au moins 2 participants pour le vote')
       return
     }
 
@@ -178,7 +179,7 @@ export default function CreateMatchPage() {
         .single()
 
       if (!activeSeason) {
-        alert('Aucune saison active trouvée. Créez une saison d\'abord.')
+        toast.warning('Aucune saison active trouvée. Créez une saison d\'abord.')
         return
       }
 
@@ -250,12 +251,12 @@ export default function CreateMatchPage() {
         logger.log('Erreur notifications (non bloquant):', notifErr)
       }
 
-      alert('Match créé et vote lancé avec succès !')
+      toast.success('Match créé et vote lancé avec succès !')
       router.push('/dashboard')
 
     } catch (err) {
       logger.error('Erreur création match:', err)
-      alert('Erreur lors de la création du match')
+      toast.error('Erreur lors de la création du match')
     } finally {
       setCreating(false)
     }

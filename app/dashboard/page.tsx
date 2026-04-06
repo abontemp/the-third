@@ -4,12 +4,13 @@ import { createClient } from '@/lib/supabase/client'
 import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { 
-  Plus, Loader, Users, History, BarChart3, 
+import {
+  Plus, Loader, Users, History, BarChart3,
   ArrowRight, Trophy, MessageSquareQuote, Swords, Target,
   Award, Calendar, TrendingUp, UserPlus, RefreshCw, Trash2,
   CheckCircle, Play, AlertCircle, Clock, LogOut
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 type Team = {
   id: string
@@ -293,35 +294,37 @@ export default function DashboardPage() {
               matchesMap[m.id] = m
             })
 
-            // Vérifier pour chaque session si l'utilisateur a voté
-            const sessionsWithVoteStatus = await Promise.all(
-              (votingSessions as unknown as VotingSession[]).map(async (session: VotingSession) => {
-                const match = matchesMap[session.match_id]
-                
-                // Vérifier si l'utilisateur est participant
-                const { data: participant } = await supabase
-                  .from('session_participants')
-                  .select('has_voted')
-                  .eq('session_id', session.id)
-                  .eq('user_id', currentUserId)
-                  .single()
+            // Batch : une seule requête pour tous les participants de l'utilisateur
+            const sessionIds = (votingSessions as unknown as VotingSession[]).map(s => s.id)
+            const { data: userParticipations } = await supabase
+              .from('session_participants')
+              .select('session_id, has_voted')
+              .in('session_id', sessionIds)
+              .eq('user_id', currentUserId)
 
-                return {
-                  id: session.id,
-                  match_id: session.match_id,
-                  status: session.status,
-                  flop_reader_id: session.flop_reader_id,
-                  top_reader_id: session.top_reader_id,
-                  matches: {
-                    opponent: match?.opponent || 'Inconnu',
-                    match_date: match?.match_date || new Date().toISOString(),
-                    location: match?.location || null
-                  },
-                  has_voted: participant?.has_voted || false,
-                  is_participant: !!participant
-                }
-              })
-            )
+            const participationMap: Record<string, { has_voted: boolean }> = {}
+            userParticipations?.forEach(p => {
+              participationMap[p.session_id] = { has_voted: p.has_voted }
+            })
+
+            const sessionsWithVoteStatus = (votingSessions as unknown as VotingSession[]).map((session: VotingSession) => {
+              const match = matchesMap[session.match_id]
+              const participation = participationMap[session.id]
+              return {
+                id: session.id,
+                match_id: session.match_id,
+                status: session.status,
+                flop_reader_id: session.flop_reader_id,
+                top_reader_id: session.top_reader_id,
+                matches: {
+                  opponent: match?.opponent || 'Inconnu',
+                  match_date: match?.match_date || new Date().toISOString(),
+                  location: match?.location || null
+                },
+                has_voted: participation?.has_voted || false,
+                is_participant: !!participation
+              }
+            })
 
             setActiveSessions(sessionsWithVoteStatus)
           }
@@ -470,7 +473,7 @@ export default function DashboardPage() {
       ))
     } catch (err) {
       logger.error('Erreur rejoindre session:', err)
-      alert('Erreur lors de la participation au vote')
+      toast.error('Erreur lors de la participation au vote')
     } finally {
       setJoiningSession(null)
     }
@@ -502,7 +505,7 @@ export default function DashboardPage() {
       const voters = participants.filter(p => p.has_voted)
       
       if (voters.length < 2) {
-        alert('Il faut au moins 2 personnes ayant voté pour clôturer')
+        toast.warning('Il faut au moins 2 personnes ayant voté pour clôturer')
         return
       }
 
@@ -522,13 +525,13 @@ export default function DashboardPage() {
 
       if (error) throw error
 
-      alert(`Vote clôturé !\n\nLecteur TOP : ${topReader.display_name}\nLecteur FLOP : ${flopReader.display_name}`)
+      toast.success(`Vote clôturé ! Lecteur TOP : ${topReader.display_name} — Lecteur FLOP : ${flopReader.display_name}`)
       
       loadTeamData()
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors de la clôture du vote')
+      toast.error('Erreur lors de la clôture du vote')
     } finally {
       setClosingSession(null)
     }
@@ -564,7 +567,7 @@ export default function DashboardPage() {
       loadTeamData()
     } catch (error) {
       logger.error('Erreur lors de la suppression:', error)
-      alert('Erreur lors de la suppression du membre')
+      toast.error('Erreur lors de la suppression du membre')
     } finally {
       setDeleting(false)
     }
@@ -586,7 +589,7 @@ export default function DashboardPage() {
       loadTeamData()
     } catch (error) {
       logger.error('Erreur lors de la modification du rôle:', error)
-      alert('Erreur lors de la modification du rôle')
+      toast.error('Erreur lors de la modification du rôle')
     }
   }
 
@@ -596,7 +599,7 @@ export default function DashboardPage() {
       router.push('/login')
     } catch (error) {
       logger.error('Erreur lors de la déconnexion:', error)
-      alert('Erreur lors de la déconnexion')
+      toast.error('Erreur lors de la déconnexion')
     }
   }
 
@@ -628,7 +631,7 @@ export default function DashboardPage() {
       loadTeamData()
     } catch (error) {
       logger.error('Erreur lors de l\'acceptation:', error)
-      alert('Erreur lors de l\'acceptation de la demande')
+      toast.error('Erreur lors de l\'acceptation de la demande')
     } finally {
       setProcessingRequest(null)
     }
@@ -650,7 +653,7 @@ export default function DashboardPage() {
       loadTeamData()
     } catch (error) {
       logger.error('Erreur lors du rejet:', error)
-      alert('Erreur lors du rejet de la demande')
+      toast.error('Erreur lors du rejet de la demande')
     } finally {
       setProcessingRequest(null)
     }

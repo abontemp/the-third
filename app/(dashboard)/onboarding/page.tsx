@@ -5,6 +5,7 @@ import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { Users, Plus, LogIn, Loader, Search, Hash, CheckCircle, ArrowLeft } from 'lucide-react'
+import { toast } from 'sonner'
 
 type Team = {
   id: string
@@ -42,7 +43,7 @@ export default function OnboardingPage() {
 
   const handleCreateTeam = async () => {
     if (!teamName.trim() || !sport) {
-      alert('Veuillez remplir tous les champs obligatoires')
+      toast.warning('Veuillez remplir tous les champs obligatoires')
       return
     }
 
@@ -94,12 +95,12 @@ export default function OnboardingPage() {
 
       if (memberError) throw memberError
 
-      alert(`✅ Équipe "${teamName}" créée avec succès !`)
+      toast.success(`Équipe "${teamName}" créée avec succès !`)
       router.push('/dashboard')
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors de la création de l\'équipe')
+      toast.error('Erreur lors de la création de l\'équipe')
     } finally {
       setCreating(false)
     }
@@ -107,7 +108,7 @@ export default function OnboardingPage() {
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
-      alert('Veuillez entrer un code ou un nom d\'équipe')
+      toast.warning('Veuillez entrer un code ou un nom d\'équipe')
       return
     }
 
@@ -118,7 +119,7 @@ export default function OnboardingPage() {
       const query = searchQuery.trim()
 
       if (query.length > 50) {
-        alert('La recherche ne peut pas dépasser 50 caractères')
+        toast.warning('La recherche ne peut pas dépasser 50 caractères')
         return
       }
 
@@ -135,26 +136,28 @@ export default function OnboardingPage() {
         return
       }
 
-      // Compter les membres
-      const teamsWithCounts = await Promise.all(
-        teamsData.map(async (team) => {
-          const { count } = await supabase
-            .from('team_members')
-            .select('*', { count: 'exact', head: true })
-            .eq('team_id', team.id)
+      // Batch : compter les membres de toutes les équipes en une requête
+      const teamIds = teamsData.map(t => t.id)
+      const { data: memberRows } = await supabase
+        .from('team_members')
+        .select('team_id')
+        .in('team_id', teamIds)
 
-          return {
-            ...team,
-            member_count: count || 0
-          }
-        })
-      )
+      const memberCountMap: Record<string, number> = {}
+      memberRows?.forEach(r => {
+        memberCountMap[r.team_id] = (memberCountMap[r.team_id] || 0) + 1
+      })
+
+      const teamsWithCounts = teamsData.map(team => ({
+        ...team,
+        member_count: memberCountMap[team.id] || 0
+      }))
 
       setSearchResults(teamsWithCounts)
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors de la recherche')
+      toast.error('Erreur lors de la recherche')
     } finally {
       setSearching(false)
     }
@@ -179,7 +182,7 @@ export default function OnboardingPage() {
         .single()
 
       if (existingMember) {
-        alert('Vous êtes déjà membre de cette équipe')
+        toast.warning('Vous êtes déjà membre de cette équipe')
         router.push('/dashboard')
         return
       }
@@ -194,9 +197,9 @@ export default function OnboardingPage() {
 
       if (existingRequest) {
         if (existingRequest.status === 'pending') {
-          alert('Vous avez déjà une demande en attente pour cette équipe')
+          toast.warning('Vous avez déjà une demande en attente pour cette équipe')
         } else if (existingRequest.status === 'rejected') {
-          alert('Votre demande précédente a été refusée')
+          toast.error('Votre demande précédente a été refusée')
         }
         return
       }
@@ -228,12 +231,12 @@ export default function OnboardingPage() {
         body: JSON.stringify({ team_id: teamId, requester_name: requesterName }),
       }).catch(logger.error)
 
-      alert(`✅ Demande envoyée à l'équipe "${teamName}" !`)
+      toast.success(`Demande envoyée à l'équipe "${teamName}" !`)
       router.push('/dashboard')
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors de l\'envoi de la demande')
+      toast.error('Erreur lors de l\'envoi de la demande')
     } finally {
       setJoining(false)
     }

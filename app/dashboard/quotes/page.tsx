@@ -3,7 +3,7 @@ import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
 import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, Quote, TrendingUp, TrendingDown } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 
 type QuoteType = {
@@ -21,6 +21,7 @@ type QuoteType = {
 
 export default function MemorableQuotesPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   
   const [loading, setLoading] = useState(true)
@@ -44,15 +45,10 @@ export default function MemorableQuotesPage() {
       logger.log('✅ Utilisateur trouvé:', user.id)
 
       // Récupérer team_id depuis URL ou localStorage
-      let teamId: string | null = null
-      
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search)
-        teamId = params.get('team_id')
-        logger.log('🔗 Team ID depuis URL:', teamId)
-      }
+      let teamId: string | null = searchParams.get('team_id')
+      logger.log('🔗 Team ID depuis URL:', teamId)
 
-      if (!teamId && typeof window !== 'undefined') {
+      if (!teamId) {
         teamId = localStorage.getItem('selectedTeamId')
         logger.log('📦 Team ID depuis localStorage:', teamId)
       }

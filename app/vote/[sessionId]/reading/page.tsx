@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { logger } from '@/lib/utils/logger'
 import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, ThumbsDown, Trophy, Sparkles, Flame } from 'lucide-react'
+import { toast } from 'sonner'
 
 type Vote = {
   id: string
@@ -92,7 +93,7 @@ export default function ReadingPage() {
         return
       }
 
-      const savedTeamId = localStorage.getItem('current_team_id')
+      const savedTeamId = localStorage.getItem('selectedTeamId')
 
       // Récupérer la session
       const { data: sessionData } = await supabase
@@ -115,7 +116,7 @@ export default function ReadingPage() {
         .single()
 
       if (!sessionData) {
-        alert('Session introuvable')
+        toast.error('Session introuvable')
         router.push('/dashboard')
         return
       }
@@ -130,7 +131,7 @@ export default function ReadingPage() {
         logger.log('✅ Team ID:', resolvedTeamId)
       } else {
         logger.error('❌ Impossible de récupérer le team_id')
-        alert('Erreur: impossible de déterminer l\'équipe')
+        toast.error('Erreur: impossible de déterminer l\'équipe')
         router.push('/dashboard')
         return
       }
@@ -184,7 +185,7 @@ export default function ReadingPage() {
         .eq('session_id', sessionId)
 
       if (!votesData || votesData.length === 0) {
-        alert('Aucun vote trouvé')
+        toast.warning('Aucun vote trouvé')
         router.push('/dashboard')
         return
       }
@@ -231,7 +232,7 @@ export default function ReadingPage() {
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors du chargement')
+      toast.error('Erreur lors du chargement')
     } finally {
       setLoading(false)
     }
@@ -261,11 +262,11 @@ export default function ReadingPage() {
 
       if (error) throw error
 
-      alert('Lecture terminée ! Direction les résultats 🎉')
+      toast.success('Lecture terminée ! Direction les résultats')
       router.push(`/vote/${sessionId}/results`)
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors de la finalisation')
+      toast.error('Erreur lors de la finalisation')
     }
   }
 
@@ -276,12 +277,12 @@ export default function ReadingPage() {
     type: 'top' | 'flop' | 'best_action' | 'worst_action'
   ) => {
     if (!canControl) {
-      alert('Seul le lecteur ou un manager peut sauvegarder des citations')
+      toast.warning('Seul le lecteur ou un manager peut sauvegarder des citations')
       return
     }
 
     if (!teamId) {
-      alert('Impossible de sauvegarder : team_id introuvable')
+      toast.error('Impossible de sauvegarder : team_id introuvable')
       return
     }
 
@@ -336,7 +337,7 @@ export default function ReadingPage() {
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors de la sauvegarde de la citation')
+      toast.error('Erreur lors de la sauvegarde de la citation')
     } finally {
       setSavingQuote(null)
     }

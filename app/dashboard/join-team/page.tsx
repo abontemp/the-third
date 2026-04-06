@@ -5,6 +5,7 @@ import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { ArrowLeft, Search, Users, Loader, Hash, CheckCircle } from 'lucide-react'
+import { toast } from 'sonner'
 
 type Team = {
   id: string
@@ -27,7 +28,7 @@ export default function JoinTeamPage() {
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
-      alert('Veuillez entrer un code ou un nom d\'équipe')
+      toast.warning('Veuillez entrer un code ou un nom d\'équipe')
       return
     }
 
@@ -38,7 +39,7 @@ export default function JoinTeamPage() {
       const query = searchQuery.trim()
 
       if (query.length > 50) {
-        alert('La recherche ne peut pas dépasser 50 caractères')
+        toast.warning('La recherche ne peut pas dépasser 50 caractères')
         return
       }
 
@@ -55,26 +56,28 @@ export default function JoinTeamPage() {
         return
       }
 
-      // Compter les membres de chaque équipe
-      const teamsWithCounts = await Promise.all(
-        teamsData.map(async (team) => {
-          const { count } = await supabase
-            .from('team_members')
-            .select('*', { count: 'exact', head: true })
-            .eq('team_id', team.id)
+      // Batch : compter les membres de toutes les équipes en une requête
+      const teamIds = teamsData.map(t => t.id)
+      const { data: memberRows } = await supabase
+        .from('team_members')
+        .select('team_id')
+        .in('team_id', teamIds)
 
-          return {
-            ...team,
-            member_count: count || 0
-          }
-        })
-      )
+      const memberCountMap: Record<string, number> = {}
+      memberRows?.forEach(r => {
+        memberCountMap[r.team_id] = (memberCountMap[r.team_id] || 0) + 1
+      })
+
+      const teamsWithCounts = teamsData.map(team => ({
+        ...team,
+        member_count: memberCountMap[team.id] || 0
+      }))
 
       setSearchResults(teamsWithCounts)
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors de la recherche')
+      toast.error('Erreur lors de la recherche')
     } finally {
       setLoading(false)
     }
@@ -86,7 +89,7 @@ export default function JoinTeamPage() {
 
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        alert('Vous devez être connecté')
+        toast.error('Vous devez être connecté')
         return
       }
 
@@ -100,11 +103,11 @@ export default function JoinTeamPage() {
 
       if (existingRequest) {
         if (existingRequest.status === 'pending') {
-          alert('Vous avez déjà une demande en attente pour cette équipe')
+          toast.warning('Vous avez déjà une demande en attente pour cette équipe')
         } else if (existingRequest.status === 'approved') {
-          alert('Vous êtes déjà membre de cette équipe')
+          toast.warning('Vous êtes déjà membre de cette équipe')
         } else if (existingRequest.status === 'rejected') {
-          alert('Votre demande précédente a été refusée. Veuillez contacter le manager de l\'équipe.')
+          toast.error('Votre demande précédente a été refusée. Veuillez contacter le manager de l\'équipe.')
         }
         return
       }
@@ -118,7 +121,7 @@ export default function JoinTeamPage() {
         .single()
 
       if (existingMember) {
-        alert('Vous êtes déjà membre de cette équipe')
+        toast.warning('Vous êtes déjà membre de cette équipe')
         return
       }
 
@@ -149,12 +152,12 @@ export default function JoinTeamPage() {
         body: JSON.stringify({ team_id: teamId, requester_name: requesterName }),
       }).catch(logger.error)
 
-      alert(`✅ Demande envoyée à l'équipe "${teamName}" !`)
+      toast.success(`Demande envoyée à l'équipe "${teamName}" !`)
       router.push('/dashboard')
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors de l\'envoi de la demande')
+      toast.error('Erreur lors de l\'envoi de la demande')
     } finally {
       setRequesting(false)
     }

@@ -5,6 +5,7 @@ import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Camera, Loader, Save } from 'lucide-react'
+import { toast } from 'sonner'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -57,7 +58,7 @@ export default function ProfilePage() {
 
     } catch (err) {
       logger.error('Erreur chargement profil:', err)
-      alert('Erreur lors du chargement du profil')
+      toast.error('Erreur lors du chargement du profil')
     } finally {
       setLoading(false)
     }
@@ -116,12 +117,12 @@ export default function ProfilePage() {
 
       if (updateError) throw updateError
 
-      alert('Profil mis à jour avec succès !')
+      toast.success('Profil mis à jour avec succès !')
       router.push('/dashboard')
 
     } catch (err) {
       logger.error('Erreur sauvegarde:', err)
-      alert('Erreur lors de la sauvegarde du profil')
+      toast.error('Erreur lors de la sauvegarde du profil')
     } finally {
       setSaving(false)
       setUploading(false)

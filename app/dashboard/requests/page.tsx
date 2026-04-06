@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
 import { ArrowLeft, Loader, UserPlus, Check, X, Users } from 'lucide-react'
+import { toast } from 'sonner'
 
 type JoinRequest = {
   id: string
@@ -46,7 +47,7 @@ function RequestsContent() {
 
       if (!teamIdToUse) {
         // Fallback localStorage
-        teamIdToUse = localStorage.getItem('current_team_id')
+        teamIdToUse = localStorage.getItem('selectedTeamId')
         logger.log('📦 Team ID depuis localStorage:', teamIdToUse)
       }
 
@@ -61,7 +62,7 @@ function RequestsContent() {
         logger.log('📋 Memberships trouvés:', memberships)
 
         if (!memberships || memberships.length === 0) {
-          alert('Vous n\'êtes membre d\'aucune équipe')
+          toast.warning('Vous n\'êtes membre d\'aucune équipe')
           router.push('/dashboard')
           return
         }
@@ -69,7 +70,7 @@ function RequestsContent() {
         const managerMembership = memberships.find(m => m.role === 'manager' || m.role === 'creator')
 
         if (!managerMembership) {
-          alert('Vous devez être manager pour accéder à cette page')
+          toast.error('Vous devez être manager pour accéder à cette page')
           router.push('/dashboard')
           return
         }
@@ -88,7 +89,7 @@ function RequestsContent() {
         .single()
 
       if (!membership || !['manager', 'creator'].includes(membership.role)) {
-        alert('Vous devez être manager de cette équipe')
+        toast.error('Vous devez être manager de cette équipe')
         router.push('/dashboard')
         return
       }
@@ -165,7 +166,7 @@ function RequestsContent() {
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors du chargement des demandes')
+      toast.error('Erreur lors du chargement des demandes')
     } finally {
       setLoading(false)
     }
@@ -222,13 +223,13 @@ function RequestsContent() {
 
       if (notifError) logger.error('Erreur notification:', notifError)
 
-      alert(action === 'accept' ? '✅ Membre ajouté !' : '❌ Demande refusée')
+      action === 'accept' ? toast.success('Membre ajouté !') : toast.error('Demande refusée')
 
       await loadRequests()
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors du traitement de la demande')
+      toast.error('Erreur lors du traitement de la demande')
     } finally {
       setProcessing(null)
     }

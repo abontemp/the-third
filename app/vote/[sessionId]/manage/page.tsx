@@ -5,6 +5,7 @@ import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Users, CheckCircle, Clock, AlertCircle, Play, Loader, XCircle, Share2, Copy, Check } from 'lucide-react'
+import { toast } from 'sonner'
 
 type Participant = {
   user_id: string
@@ -190,7 +191,7 @@ export default function ManageVotePage() {
     const votedParticipants = participants.filter(p => p.has_voted)
     
     if (votedParticipants.length < 2) {
-      alert('Il faut au moins 2 personnes ayant voté pour clôturer')
+      toast.warning('Il faut au moins 2 personnes ayant voté pour clôturer')
       return
     }
 
@@ -218,12 +219,12 @@ export default function ManageVotePage() {
 
       if (updateError) throw updateError
 
-      alert('Vote clôturé ! Les lecteurs ont été sélectionnés.')
+      toast.success('Vote clôturé ! Les lecteurs ont été sélectionnés.')
       router.push(`/vote/${sessionId}/reading`)
 
     } catch (err) {
       logger.error('Erreur:', err)
-      alert('Erreur lors de la clôture du vote')
+      toast.error('Erreur lors de la clôture du vote')
     } finally {
       setClosing(false)
     }

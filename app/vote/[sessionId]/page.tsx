@@ -5,6 +5,7 @@ import { getDisplayName } from '@/lib/utils/displayName'
 import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Send, Loader, TrendingUp, TrendingDown, Trophy, Sparkles, Flame, AlertCircle } from 'lucide-react'
+import { toast } from 'sonner'
 
 type Member = {
   user_id: string
@@ -82,7 +83,7 @@ export default function VotePage() {
         .single()
 
       if (!sessionData) {
-        alert('Session de vote introuvable')
+        toast.error('Session de vote introuvable')
         router.push('/dashboard')
         return
       }
@@ -107,13 +108,13 @@ export default function VotePage() {
         .single()
 
       if (!participant) {
-        alert('Vous n\'êtes pas participant à ce vote')
+        toast.error('Vous n\'êtes pas participant à ce vote')
         router.push('/dashboard')
         return
       }
 
       if (participant.has_voted) {
-        alert('Vous avez déjà voté !')
+        toast.warning('Vous avez déjà voté !')
         router.push('/dashboard')
         return
       }
@@ -144,7 +145,7 @@ export default function VotePage() {
 
     } catch (err) {
       logger.error('Erreur chargement:', err)
-      alert('Erreur lors du chargement')
+      toast.error('Erreur lors du chargement')
     } finally {
       setLoading(false)
     }
@@ -210,11 +211,11 @@ export default function VotePage() {
     // Validation des prédictions si on est sur cette étape
     if (currentStepName === 'predictions') {
       if (!predictedTopId || !predictedFlopId) {
-        alert('Veuillez faire vos prédictions TOP et FLOP')
+        toast.warning('Veuillez faire vos prédictions TOP et FLOP')
         return
       }
       if (predictedTopId === predictedFlopId) {
-        alert('Les prédictions TOP et FLOP doivent être différentes')
+        toast.warning('Les prédictions TOP et FLOP doivent être différentes')
         return
       }
     }
@@ -229,27 +230,27 @@ export default function VotePage() {
   const handleSubmitVote = async () => {
     // Validations
     if (!topPlayerId || !flopPlayerId) {
-      alert('Veuillez sélectionner un TOP et un FLOP')
+      toast.warning('Veuillez sélectionner un TOP et un FLOP')
       return
     }
 
     if (topPlayerId === flopPlayerId) {
-      alert('Le TOP et le FLOP doivent être différents')
+      toast.warning('Le TOP et le FLOP doivent être différents')
       return
     }
 
     if (!topComment.trim() || !flopComment.trim()) {
-      alert('Veuillez ajouter des commentaires pour le TOP et le FLOP')
+      toast.warning('Veuillez ajouter des commentaires pour le TOP et le FLOP')
       return
     }
 
     if (session?.include_best_action && bestActionPlayerId && !bestActionComment.trim()) {
-      alert('Veuillez ajouter un commentaire pour le plus beau geste')
+      toast.warning('Veuillez ajouter un commentaire pour le plus beau geste')
       return
     }
 
     if (session?.include_worst_action && worstActionPlayerId && !worstActionComment.trim()) {
-      alert('Veuillez ajouter un commentaire pour le plus beau fail')
+      toast.warning('Veuillez ajouter un commentaire pour le plus beau fail')
       return
     }
 
@@ -313,12 +314,12 @@ export default function VotePage() {
 
       logger.log('✅ Participant marqué comme ayant voté')
 
-      alert('Vote enregistré avec succès ! ✅')
+      toast.success('Vote enregistré avec succès !')
       router.push('/dashboard')
 
     } catch (err) {
       logger.error('Erreur soumission vote:', err)
-      alert('Erreur lors de l\'enregistrement du vote')
+      toast.error('Erreur lors de l\'enregistrement du vote')
     } finally {
       setSubmitting(false)
     }

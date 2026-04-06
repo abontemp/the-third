@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { logger } from '@/lib/utils/logger'
 import { getDisplayName as getDisplayNameUtil } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, TrendingUp, TrendingDown, Sparkles, Flame, Trophy, Target, Mic } from 'lucide-react'
+import { toast } from 'sonner'
 
 type PodiumResult = {
   player_id: string
@@ -75,7 +76,7 @@ export default function ResultsPage() {
         .single()
 
       if (!sessionData) {
-        alert('Session introuvable')
+        toast.error('Session introuvable')
         router.push('/dashboard')
         return
       }
@@ -260,7 +261,7 @@ export default function ResultsPage() {
 
     } catch (err) {
       logger.error('Erreur chargement résultats:', err)
-      alert('Erreur lors du chargement des résultats')
+      toast.error('Erreur lors du chargement des résultats')
     } finally {
       setLoading(false)
     }

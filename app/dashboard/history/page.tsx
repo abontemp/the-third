@@ -112,28 +112,31 @@ export default function HistoryPage() {
         return
       }
 
-      // Compter les votes pour chaque session
-      const sessionsWithCounts = await Promise.all(
-        sessionsData.map(async (session) => {
-          const { count } = await supabase
-            .from('votes')
-            .select('*', { count: 'exact', head: true })
-            .eq('session_id', session.id)
+      // Batch : compter les votes pour toutes les sessions en une requête
+      const sessionIds = sessionsData.map(s => s.id)
+      const { data: allVotes } = await supabase
+        .from('votes')
+        .select('session_id')
+        .in('session_id', sessionIds)
 
-          const match = matchesMap[session.match_id]
+      const voteCountMap: Record<string, number> = {}
+      allVotes?.forEach(v => {
+        voteCountMap[v.session_id] = (voteCountMap[v.session_id] || 0) + 1
+      })
 
-          return {
-            id: session.id,
-            status: session.status,
-            created_at: session.created_at,
-            match: {
-              opponent: match?.opponent || 'Adversaire inconnu',
-              match_date: match?.match_date || new Date().toISOString()
-            },
-            vote_count: count || 0
-          }
-        })
-      )
+      const sessionsWithCounts = sessionsData.map((session) => {
+        const match = matchesMap[session.match_id]
+        return {
+          id: session.id,
+          status: session.status,
+          created_at: session.created_at,
+          match: {
+            opponent: match?.opponent || 'Adversaire inconnu',
+            match_date: match?.match_date || new Date().toISOString()
+          },
+          vote_count: voteCountMap[session.id] || 0
+        }
+      })
 
       setSessions(sessionsWithCounts)
       logger.log('✅ Historique chargé avec succès')
