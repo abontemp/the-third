@@ -1215,7 +1215,7 @@ export default function DashboardPage() {
         {/* Section 5: Actions équipes */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
-            onClick={() => router.push('/onboarding')}
+            onClick={() => router.push('/dashboard/join-team')}
             className="bg-slate-700/50 hover:bg-slate-700/70 border border-white/10 hover:border-green-500/50 text-white py-4 px-6 rounded-xl font-semibold transition flex items-center justify-center gap-3"
           >
             <UserPlus size={24} />
