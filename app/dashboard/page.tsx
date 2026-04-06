@@ -114,6 +114,7 @@ export default function DashboardPage() {
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
   const [sessionParticipants, setSessionParticipants] = useState<Record<string, Participant[]>>({})
   const [closingSession, setClosingSession] = useState<string | null>(null)
+  const [joiningSession, setJoiningSession] = useState<string | null>(null)
 
   useEffect(() => {
     loadTeams()
@@ -452,6 +453,27 @@ export default function DashboardPage() {
     
     const member = members.find(m => m.user_id === userId)
     return member?.display_name || 'Inconnu'
+  }
+
+  const handleJoinSession = async (sessionId: string) => {
+    setJoiningSession(sessionId)
+    try {
+      const { error } = await supabase
+        .from('session_participants')
+        .insert([{ session_id: sessionId, user_id: currentUserId, has_voted: false }])
+
+      if (error) throw error
+
+      // Mettre à jour localement sans recharger tout
+      setActiveSessions(prev => prev.map(s =>
+        s.id === sessionId ? { ...s, is_participant: true } : s
+      ))
+    } catch (err) {
+      logger.error('Erreur rejoindre session:', err)
+      alert('Erreur lors de la participation au vote')
+    } finally {
+      setJoiningSession(null)
+    }
   }
 
   const handleExpandSession = async (sessionId: string) => {
@@ -855,9 +877,22 @@ export default function DashboardPage() {
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
-                        {/* Bouton voter - NOUVEAU STYLE */}
-                        {(session.status === 'open' || session.status === 'pending' || session.status === 'in_progress') && session.is_participant && (
-                          session.has_voted ? (
+                        {/* Bouton rejoindre / voter */}
+                        {(session.status === 'open' || session.status === 'pending' || session.status === 'in_progress') && (
+                          !session.is_participant ? (
+                            <button
+                              onClick={() => handleJoinSession(session.id)}
+                              disabled={joiningSession === session.id}
+                              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-bold transition flex items-center gap-2 shadow-lg"
+                            >
+                              {joiningSession === session.id ? (
+                                <Loader size={20} className="animate-spin" />
+                              ) : (
+                                <UserPlus size={20} />
+                              )}
+                              Rejoindre le vote
+                            </button>
+                          ) : session.has_voted ? (
                             <div className="flex items-center gap-2 text-green-400 font-semibold">
                               <CheckCircle size={20} />
                               <span>✅ Vous avez voté</span>

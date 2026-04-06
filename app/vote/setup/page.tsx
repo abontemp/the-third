@@ -4,16 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/utils/logger'
-import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Send, AlertCircle, CheckCircle, Loader, Sparkles, Target } from 'lucide-react'
-
-type TeamMember = {
-  id: string
-  user_id: string
-  role: string
-  display_name: string
-  avatar_url?: string
-}
 
 type Season = {
   id: string
@@ -27,44 +18,40 @@ export default function VoteSetupPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  
-  const [members, setMembers] = useState<TeamMember[]>([])
+
   const [seasons, setSeasons] = useState<Season[]>([])
-  
+
   const [formData, setFormData] = useState({
     seasonId: '',
     opponent: '',
-    matchDate: new Date().toISOString().split('T')[0], // Date du jour par défaut
+    matchDate: new Date().toISOString().split('T')[0],
     location: '',
-    selectedMembers: [] as string[],
     enablePredictions: false,
     enableBestMove: false
   })
 
   useEffect(() => {
-  loadData()
-}, []) // eslint-disable-line react-hooks/exhaustive-deps
+    loadData()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       if (!user) {
         router.push('/login')
         return
       }
 
-        // 🎯 CORRECTION : Récupérer le team_id depuis localStorage (comme le dashboard)
       const selectedTeamId = localStorage.getItem('selectedTeamId')
-      
+
       if (!selectedTeamId) {
         setError("Aucune équipe sélectionnée")
         router.push('/dashboard')
         return
       }
 
-      // Vérifier que l'utilisateur est membre de cette équipe
       const { data: membership } = await supabase
         .from('team_members')
         .select('team_id, role')
@@ -83,63 +70,6 @@ export default function VoteSetupPage() {
         return
       }
 
-      // Charger TOUS les membres de l'équipe
-      const { data: membersData } = await supabase
-        .from('team_members')
-        .select('id, user_id, role')
-        .eq('team_id', membership.team_id)
-
-      logger.log('Membres chargés:', membersData)
-      logger.log('Nombre de membres:', membersData?.length)
-
-      if (!membersData || membersData.length === 0) {
-        setError("Aucun membre dans l'équipe")
-        setLoading(false)
-        return
-      }
-
-      // 🎯 NOUVEAU : Charger les profils de TOUS les membres
-      const userIds = membersData.map(m => m.user_id)
-      
-      logger.log('🔍 Chargement des profils pour:', userIds)
-
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, nickname, avatar_url')
-        .in('id', userIds)
-
-      logger.log('📝 Profils chargés:', profilesData)
-      logger.log('📝 Nombre de profils:', profilesData?.length)
-
-      if (profilesError) {
-        logger.error('Erreur profils:', profilesError)
-      }
-
-      // Créer un mapping des profiles
-      const profilesMap: Record<string, { 
-        display_name: string
-        avatar_url?: string 
-      }> = {}
-      
-      profilesData?.forEach(profile => {
-        profilesMap[profile.id] = {
-          display_name: getDisplayName(profile),
-          avatar_url: profile.avatar_url
-        }
-      })
-
-      // Combiner les données
-      const formattedMembers: TeamMember[] = membersData.map(member => ({
-        id: member.id,
-        user_id: member.user_id,
-        role: member.role,
-        display_name: profilesMap[member.user_id]?.display_name || `Membre #${member.user_id.substring(0, 8)}`,
-        avatar_url: profilesMap[member.user_id]?.avatar_url
-      }))
-
-      logger.log('✅ Membres formatés:', formattedMembers)
-      setMembers(formattedMembers)
-
       // Charger les saisons actives
       const { data: seasonsData } = await supabase
         .from('seasons')
@@ -149,7 +79,6 @@ export default function VoteSetupPage() {
 
       setSeasons(seasonsData || [])
 
-      // Si pas de saison, en créer une par défaut
       if (!seasonsData || seasonsData.length === 0) {
         const { data: newSeason } = await supabase
           .from('seasons')
@@ -178,29 +107,6 @@ export default function VoteSetupPage() {
     }
   }
 
-  const toggleMember = (memberId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      selectedMembers: prev.selectedMembers.includes(memberId)
-        ? prev.selectedMembers.filter(id => id !== memberId)
-        : [...prev.selectedMembers, memberId]
-    }))
-  }
-
-  const selectAll = () => {
-    setFormData(prev => ({
-      ...prev,
-      selectedMembers: members.map(m => m.id)
-    }))
-  }
-
-  const deselectAll = () => {
-    setFormData(prev => ({
-      ...prev,
-      selectedMembers: []
-    }))
-  }
-
   const handleSubmit = async () => {
     if (!formData.opponent.trim()) {
       setError("Le nom de l'adversaire est obligatoire")
@@ -208,10 +114,6 @@ export default function VoteSetupPage() {
     }
     if (!formData.matchDate) {
       setError("La date du match est obligatoire")
-      return
-    }
-    if (formData.selectedMembers.length < 2) {
-      setError("Sélectionnez au moins 2 participants")
       return
     }
 
@@ -251,24 +153,8 @@ export default function VoteSetupPage() {
 
       if (sessionError) throw sessionError
 
-      // 3. Ajouter les participants
-      const participants = formData.selectedMembers.map(memberId => {
-        const member = members.find(m => m.id === memberId)
-        return {
-          session_id: session.id,
-          user_id: member?.user_id,
-          has_voted: false
-        }
-      })
+      setSuccess("Session de vote créée ! Les membres peuvent maintenant rejoindre depuis leur dashboard.")
 
-      const { error: participantsError } = await supabase
-        .from('session_participants')
-        .insert(participants)
-
-      if (participantsError) throw participantsError
-
-      setSuccess("Match et vote créés avec succès ! Redirection...")
-      
       setTimeout(() => {
         router.push(`/vote/${session.id}/manage`)
       }, 1500)
@@ -312,7 +198,7 @@ export default function VoteSetupPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-slate-800/50 backdrop-blur border border-white/10 rounded-2xl p-8">
           <h1 className="text-3xl font-bold text-white mb-2">Créer un match & Vote</h1>
-          <p className="text-gray-400 mb-8">Configurez le match et sélectionnez les votants</p>
+          <p className="text-gray-400 mb-8">Les membres de l&apos;équipe pourront rejoindre le vote depuis leur dashboard</p>
 
           {error && (
             <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-start gap-3">
@@ -332,13 +218,11 @@ export default function VoteSetupPage() {
             {/* Informations du match */}
             <div>
               <h2 className="text-xl font-semibold text-white mb-4">Informations du match</h2>
-              
+
               <div className="space-y-4">
                 {seasons.length > 1 && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Saison
-                    </label>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Saison</label>
                     <select
                       value={formData.seasonId}
                       onChange={(e) => setFormData({ ...formData, seasonId: e.target.value })}
@@ -352,9 +236,7 @@ export default function VoteSetupPage() {
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Adversaire *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Adversaire *</label>
                   <input
                     type="text"
                     value={formData.opponent}
@@ -366,9 +248,7 @@ export default function VoteSetupPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Date du match *
-                    </label>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Date du match *</label>
                     <input
                       type="date"
                       value={formData.matchDate}
@@ -378,9 +258,7 @@ export default function VoteSetupPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Lieu (optionnel)
-                    </label>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Lieu (optionnel)</label>
                     <input
                       type="text"
                       value={formData.location}
@@ -397,9 +275,8 @@ export default function VoteSetupPage() {
             <div>
               <h2 className="text-xl font-semibold text-white mb-4">Fonctionnalités du vote</h2>
               <p className="text-sm text-gray-400 mb-4">Activez des options supplémentaires pour enrichir votre session de vote</p>
-              
+
               <div className="space-y-3">
-                {/* Toggle Prédictions */}
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, enablePredictions: !formData.enablePredictions })}
@@ -429,7 +306,6 @@ export default function VoteSetupPage() {
                   </div>
                 </button>
 
-                {/* Toggle Plus beau geste */}
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, enableBestMove: !formData.enableBestMove })}
@@ -461,72 +337,9 @@ export default function VoteSetupPage() {
               </div>
             </div>
 
-            {/* Sélection des participants */}
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-white">
-                  Participants au vote ({formData.selectedMembers.length}/{members.length})
-                </h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={selectAll}
-                    className="text-sm text-blue-400 hover:text-blue-300 transition"
-                  >
-                    Tout sélectionner
-                  </button>
-                  <span className="text-gray-500">|</span>
-                  <button
-                    onClick={deselectAll}
-                    className="text-sm text-gray-400 hover:text-gray-300 transition"
-                  >
-                    Tout désélectionner
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {members.map((member) => (
-                  <button
-                    key={member.id}
-                    onClick={() => toggleMember(member.id)}
-                    className={`w-full flex items-center gap-4 p-4 rounded-lg border-2 transition ${
-                      formData.selectedMembers.includes(member.id)
-                        ? 'bg-blue-500/20 border-blue-500'
-                        : 'bg-slate-700/30 border-white/10 hover:border-white/30'
-                    }`}
-                  >
-                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
-                      formData.selectedMembers.includes(member.id)
-                        ? 'bg-blue-500 border-blue-500'
-                        : 'border-gray-400'
-                    }`}>
-                      {formData.selectedMembers.includes(member.id) && (
-                        <CheckCircle className="text-white" size={16} />
-                      )}
-                    </div>
-
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                      {member.display_name[0]?.toUpperCase() || '?'}
-                    </div>
-
-                    <div className="flex-1 text-left">
-                      <p className="text-white font-medium">
-                        {member.display_name}
-                      </p>
-                      <p className="text-sm text-gray-400">
-                        {member.role === 'creator' ? 'Créateur' :
-                         member.role === 'manager' ? 'Manager' : 'Membre'}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Bouton de soumission */}
             <button
               onClick={handleSubmit}
-              disabled={submitting || formData.selectedMembers.length < 2}
+              disabled={submitting}
               className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {submitting ? (
