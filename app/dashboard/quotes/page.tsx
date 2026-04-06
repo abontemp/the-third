@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import { getDisplayName } from '@/lib/utils/displayName'
 import { ArrowLeft, Loader, Quote, TrendingUp, TrendingDown } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 
 type QuoteType = {
   id: string
@@ -19,7 +19,7 @@ type QuoteType = {
   season_name?: string
 }
 
-export default function MemorableQuotesPage() {
+function MemorableQuotesContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -366,5 +366,17 @@ export default function MemorableQuotesPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function MemorableQuotesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+        <Loader className="text-white animate-spin" size={48} />
+      </div>
+    }>
+      <MemorableQuotesContent />
+    </Suspense>
   )
 }
