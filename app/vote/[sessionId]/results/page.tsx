@@ -154,16 +154,34 @@ export default function ResultsPage() {
   }
 
   const handleShare = async () => {
-    const url = window.location.href
-    if (navigator.share) {
+    if (!shareImageUrl) return
+
+    // Essaye de partager l'image directement (Web Share API niveau 2)
+    if ('share' in navigator && 'canShare' in navigator) {
       try {
-        await navigator.share({ title: `Résultats vs ${session?.match.opponent}`, url })
-      } catch { /* user cancelled */ }
-    } else {
-      await navigator.clipboard.writeText(url)
+        const res = await fetch(shareImageUrl)
+        const blob = await res.blob()
+        const file = new File([blob], `resultats-vs-${session?.match.opponent || 'match'}.png`, { type: 'image/png' })
+
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: `Résultats vs ${session?.match.opponent}`,
+            text: `TOP & FLOP du match vs ${session?.match.opponent} 🏆`,
+          })
+          return
+        }
+      } catch { /* fallback ci-dessous */ }
+    }
+
+    // Fallback : copier le lien
+    try {
+      await navigator.clipboard.writeText(window.location.href)
       setCopied(true)
       toast.success('Lien copié !')
       setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error('Impossible de copier le lien')
     }
   }
 
@@ -283,23 +301,23 @@ export default function ResultsPage() {
         >
           <div className="bg-slate-800/40 border border-white/10 rounded-2xl p-6 text-center space-y-4">
             <p className="text-white font-semibold">Partager les résultats</p>
+            <p className="text-gray-400 text-sm">Partage l&apos;image du TOP &amp; FLOP directement dans tes apps</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button
                 onClick={handleShare}
                 className="flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition"
               >
-                <Share2 size={18} />
-                {'share' in navigator ? 'Partager' : 'Copier le lien'}
+                {copied ? <Check size={18} /> : <Share2 size={18} />}
+                {copied ? 'Lien copié !' : 'Partager l\'image'}
               </button>
               <a
                 href={shareImageUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 border border-white/10 text-white px-6 py-3 rounded-xl font-semibold transition"
-                download="resultats-the-third.png"
               >
                 <Copy size={18} />
-                Image à partager
+                Ouvrir l&apos;image
               </a>
             </div>
           </div>
