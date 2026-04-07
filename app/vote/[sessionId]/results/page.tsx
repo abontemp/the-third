@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { logger } from '@/lib/utils/logger'
 import { getDisplayName as getDisplayNameUtil } from '@/lib/utils/displayName'
-import { ArrowLeft, Loader, TrendingUp, TrendingDown, Sparkles, Flame, Trophy, Target, Mic } from 'lucide-react'
+import { ArrowLeft, Loader, TrendingUp, TrendingDown, Sparkles, Flame, Trophy, Target, Share2, Copy, Check } from 'lucide-react'
 import { toast } from 'sonner'
 
 type PodiumResult = {
@@ -12,7 +12,7 @@ type PodiumResult = {
   player_name: string
   vote_count: number
   percentage: number
-  rank: number // Position réelle basée sur le nombre de votes (1, 2, 3...)
+  rank: number
 }
 
 type VotingSession = {
@@ -23,10 +23,7 @@ type VotingSession = {
   include_worst_action: boolean
   top_reader_id?: string
   flop_reader_id?: string
-  match: {
-    opponent: string
-    match_date: string
-  }
+  match: { opponent: string; match_date: string }
 }
 
 export default function ResultsPage() {
@@ -37,491 +34,380 @@ export default function ResultsPage() {
 
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState<VotingSession | null>(null)
-  const [allVotes, setAllVotes] = useState<any[]>([])
   const [topResults, setTopResults] = useState<PodiumResult[]>([])
   const [flopResults, setFlopResults] = useState<PodiumResult[]>([])
   const [bestActionResults, setBestActionResults] = useState<PodiumResult[]>([])
   const [worstActionResults, setWorstActionResults] = useState<PodiumResult[]>([])
-  const [topReaderName, setTopReaderName] = useState<string>('')
-  const [flopReaderName, setFlopReaderName] = useState<string>('')
-  const [predictionStats, setPredictionStats] = useState<{
-    top_correct: number
-    flop_correct: number
-    both_correct: number
-    total_predictions: number
-  }>({ top_correct: 0, flop_correct: 0, both_correct: 0, total_predictions: 0 })
+  const [predictionStats, setPredictionStats] = useState<{ top_correct: number; flop_correct: number; both_correct: number; total_predictions: number } | null>(null)
+  const [copied, setCopied] = useState(false)
 
-  useEffect(() => {
-    loadResults()
-  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Animation state — chaque section révèle progressivement
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({})
+
+  useEffect(() => { loadResults() }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reveal = (key: string, delay: number) => {
+    setTimeout(() => setRevealed(prev => ({ ...prev, [key]: true })), delay)
+  }
 
   const loadResults = async () => {
     try {
       setLoading(true)
 
-      // Récupérer la session
       const { data: sessionData } = await supabase
         .from('voting_sessions')
-        .select(`
-          id,
-          status,
-          include_predictions,
-          include_best_action,
-          include_worst_action,
-          top_reader_id,
-          flop_reader_id,
-          match:match_id(opponent, match_date)
-        `)
+        .select('id, status, include_predictions, include_best_action, include_worst_action, top_reader_id, flop_reader_id, match:match_id(opponent, match_date)')
         .eq('id', sessionId)
         .single()
 
-      if (!sessionData) {
-        toast.error('Session introuvable')
-        router.push('/dashboard')
-        return
-      }
+      if (!sessionData) { toast.error('Session introuvable'); router.push('/dashboard'); return }
 
       const sessionFormatted: VotingSession = {
-        id: sessionData.id,
-        status: sessionData.status,
-        include_predictions: sessionData.include_predictions,
-        include_best_action: sessionData.include_best_action,
-        include_worst_action: sessionData.include_worst_action,
-        top_reader_id: sessionData.top_reader_id,
-        flop_reader_id: sessionData.flop_reader_id,
+        ...sessionData,
         match: Array.isArray(sessionData.match) ? sessionData.match[0] : sessionData.match
       }
-
       setSession(sessionFormatted)
 
-      // Récupérer tous les votes
-      const { data: votesData } = await supabase
-        .from('votes')
-        .select('*')
-        .eq('session_id', sessionId)
+      const { data: votesData } = await supabase.from('votes').select('*').eq('session_id', sessionId)
+      if (!votesData?.length) { setLoading(false); return }
 
-      if (!votesData || votesData.length === 0) {
-        setLoading(false)
-        return
-      }
-
-      setAllVotes(votesData)
-
-      // Récupérer tous les profils nécessaires
       const allPlayerIds = new Set<string>()
-      votesData.forEach(vote => {
-        allPlayerIds.add(vote.top_player_id)
-        allPlayerIds.add(vote.flop_player_id)
-        if (vote.best_action_player_id) allPlayerIds.add(vote.best_action_player_id)
-        if (vote.worst_action_player_id) allPlayerIds.add(vote.worst_action_player_id)
+      votesData.forEach(v => {
+        allPlayerIds.add(v.top_player_id)
+        allPlayerIds.add(v.flop_player_id)
+        if (v.best_action_player_id) allPlayerIds.add(v.best_action_player_id)
+        if (v.worst_action_player_id) allPlayerIds.add(v.worst_action_player_id)
       })
-      
-      // Ajouter les lecteurs
-      if (sessionData.top_reader_id) allPlayerIds.add(sessionData.top_reader_id)
-      if (sessionData.flop_reader_id) allPlayerIds.add(sessionData.flop_reader_id)
 
       const { data: profilesData } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, nickname, email')
+        .from('profiles').select('id, first_name, last_name, nickname, email')
         .in('id', Array.from(allPlayerIds))
 
-      const getDisplayName = (userId: string) => {
-        const profile = profilesData?.find(p => p.id === userId)
-        return getDisplayNameUtil(profile)
-      }
+      const getName = (id: string) => getDisplayNameUtil(profilesData?.find(p => p.id === id))
 
-      // Récupérer les noms des lecteurs
-      if (sessionData.top_reader_id) {
-        setTopReaderName(getDisplayName(sessionData.top_reader_id))
-      }
-      if (sessionData.flop_reader_id) {
-        setFlopReaderName(getDisplayName(sessionData.flop_reader_id))
-      }
+      const buildRanked = (votesMap: Record<string, number>, total: number): PodiumResult[] => {
+        const sorted = Object.entries(votesMap)
+          .map(([id, count]) => ({ player_id: id, player_name: getName(id), vote_count: count, percentage: Math.round((count / total) * 100), rank: 0 }))
+          .sort((a, b) => b.vote_count - a.vote_count)
 
-      // 🎯 NOUVELLE FONCTION : Assigner les rangs avec gestion des ex-aequo
-      const assignRanks = (results: { player_id: string; player_name: string; vote_count: number; percentage: number }[]): PodiumResult[] => {
         let currentRank = 1
-        return results.map((result, index) => {
-          // Si ce n'est pas le premier et que le nombre de votes est différent du précédent, incrémenter le rang
-          if (index > 0 && result.vote_count !== results[index - 1].vote_count) {
-            currentRank = index + 1
-          }
-          return {
-            ...result,
-            rank: currentRank
-          }
-        })
+        return sorted.map((r, i) => {
+          if (i > 0 && r.vote_count !== sorted[i - 1].vote_count) currentRank = i + 1
+          return { ...r, rank: currentRank }
+        }).filter(r => r.rank <= 3)
       }
 
-      // Calculer les résultats TOP avec rangs
-      const topVotes: Record<string, number> = {}
-      votesData.forEach(vote => {
-        topVotes[vote.top_player_id] = (topVotes[vote.top_player_id] || 0) + 1
+      const topMap: Record<string, number> = {}
+      const flopMap: Record<string, number> = {}
+      const bestMap: Record<string, number> = {}
+      const worstMap: Record<string, number> = {}
+
+      votesData.forEach(v => {
+        topMap[v.top_player_id] = (topMap[v.top_player_id] || 0) + 1
+        flopMap[v.flop_player_id] = (flopMap[v.flop_player_id] || 0) + 1
+        if (v.best_action_player_id) bestMap[v.best_action_player_id] = (bestMap[v.best_action_player_id] || 0) + 1
+        if (v.worst_action_player_id) worstMap[v.worst_action_player_id] = (worstMap[v.worst_action_player_id] || 0) + 1
       })
-      const topSorted = Object.entries(topVotes)
-        .map(([playerId, count]) => ({
-          player_id: playerId,
-          player_name: getDisplayName(playerId),
-          vote_count: count,
-          percentage: Math.round((count / votesData.length) * 100)
-        }))
-        .sort((a, b) => b.vote_count - a.vote_count)
-      
-      const topWithRanks = assignRanks(topSorted).filter(r => r.rank <= 3)
-      setTopResults(topWithRanks)
 
-      // Calculer les résultats FLOP avec rangs
-      const flopVotes: Record<string, number> = {}
-      votesData.forEach(vote => {
-        flopVotes[vote.flop_player_id] = (flopVotes[vote.flop_player_id] || 0) + 1
-      })
-      const flopSorted = Object.entries(flopVotes)
-        .map(([playerId, count]) => ({
-          player_id: playerId,
-          player_name: getDisplayName(playerId),
-          vote_count: count,
-          percentage: Math.round((count / votesData.length) * 100)
-        }))
-        .sort((a, b) => b.vote_count - a.vote_count)
-      
-      const flopWithRanks = assignRanks(flopSorted).filter(r => r.rank <= 3)
-      setFlopResults(flopWithRanks)
+      const top = buildRanked(topMap, votesData.length)
+      const flop = buildRanked(flopMap, votesData.length)
+      const best = buildRanked(bestMap, votesData.length)
+      const worst = buildRanked(worstMap, votesData.length)
 
-      // Calculer les résultats Plus beau geste
-      if (sessionFormatted.include_best_action) {
-        const bestActionVotes: Record<string, number> = {}
-        votesData.forEach(vote => {
-          if (vote.best_action_player_id) {
-            bestActionVotes[vote.best_action_player_id] = (bestActionVotes[vote.best_action_player_id] || 0) + 1
+      setTopResults(top)
+      setFlopResults(flop)
+      setBestActionResults(best)
+      setWorstActionResults(worst)
+
+      if (sessionFormatted.include_predictions && top.length > 0 && flop.length > 0) {
+        const topWinner = top[0].player_id
+        const flopWinner = flop[0].player_id
+        let tc = 0, fc = 0, bc = 0, total = 0
+        votesData.forEach(v => {
+          if (v.predicted_top_id && v.predicted_flop_id) {
+            total++
+            const it = v.predicted_top_id === topWinner
+            const ifl = v.predicted_flop_id === flopWinner
+            if (it) tc++
+            if (ifl) fc++
+            if (it && ifl) bc++
           }
         })
-        const bestActionSorted = Object.entries(bestActionVotes)
-          .map(([playerId, count]) => ({
-            player_id: playerId,
-            player_name: getDisplayName(playerId),
-            vote_count: count,
-            percentage: Math.round((count / votesData.length) * 100)
-          }))
-          .sort((a, b) => b.vote_count - a.vote_count)
-        
-        const bestActionWithRanks = assignRanks(bestActionSorted).filter(r => r.rank <= 3)
-        setBestActionResults(bestActionWithRanks)
+        setPredictionStats({ top_correct: tc, flop_correct: fc, both_correct: bc, total_predictions: total })
       }
 
-      // Calculer les résultats Plus beau fail
-      if (sessionFormatted.include_worst_action) {
-        const worstActionVotes: Record<string, number> = {}
-        votesData.forEach(vote => {
-          if (vote.worst_action_player_id) {
-            worstActionVotes[vote.worst_action_player_id] = (worstActionVotes[vote.worst_action_player_id] || 0) + 1
-          }
-        })
-        const worstActionSorted = Object.entries(worstActionVotes)
-          .map(([playerId, count]) => ({
-            player_id: playerId,
-            player_name: getDisplayName(playerId),
-            vote_count: count,
-            percentage: Math.round((count / votesData.length) * 100)
-          }))
-          .sort((a, b) => b.vote_count - a.vote_count)
-        
-        const worstActionWithRanks = assignRanks(worstActionSorted).filter(r => r.rank <= 3)
-        setWorstActionResults(worstActionWithRanks)
-      }
-
-      // Calculer les stats des prédictions
-      if (sessionFormatted.include_predictions && topWithRanks.length > 0 && flopWithRanks.length > 0) {
-        const topWinner = topWithRanks[0].player_id
-        const flopWinner = flopWithRanks[0].player_id
-        
-        let topCorrect = 0
-        let flopCorrect = 0
-        let bothCorrect = 0
-        let totalPredictions = 0
-
-        votesData.forEach(vote => {
-          if (vote.predicted_top_id && vote.predicted_flop_id) {
-            totalPredictions++
-            const isTopCorrect = vote.predicted_top_id === topWinner
-            const isFlopCorrect = vote.predicted_flop_id === flopWinner
-            
-            if (isTopCorrect) topCorrect++
-            if (isFlopCorrect) flopCorrect++
-            if (isTopCorrect && isFlopCorrect) bothCorrect++
-          }
-        })
-
-        setPredictionStats({
-          top_correct: topCorrect,
-          flop_correct: flopCorrect,
-          both_correct: bothCorrect,
-          total_predictions: totalPredictions
-        })
-      }
+      // Reveals progressifs
+      reveal('header', 100)
+      reveal('top', 400)
+      reveal('flop', 700)
+      reveal('best', 1000)
+      reveal('worst', 1300)
+      reveal('predictions', 1600)
+      reveal('share', 1900)
 
     } catch (err) {
-      logger.error('Erreur chargement résultats:', err)
+      logger.error('Erreur:', err)
       toast.error('Erreur lors du chargement des résultats')
     } finally {
       setLoading(false)
     }
   }
 
-  const getMedalColor = (rank: number) => {
-    if (rank === 1) return 'from-yellow-500 to-yellow-600'
-    if (rank === 2) return 'from-gray-400 to-gray-500'
-    return 'from-orange-600 to-orange-700'
+  const handleShare = async () => {
+    const url = window.location.href
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `Résultats vs ${session?.match.opponent}`, url })
+      } catch { /* user cancelled */ }
+    } else {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      toast.success('Lien copié !')
+      setTimeout(() => setCopied(false), 2000)
+    }
   }
 
-  const getPodiumHeight = (rank: number) => {
-    if (rank === 1) return 'h-48'
-    if (rank === 2) return 'h-40'
-    return 'h-32'
-  }
+  const shareImageUrl = session ? [
+    `/api/og/results?opponent=${encodeURIComponent(session.match.opponent)}`,
+    `&date=${encodeURIComponent(session.match.match_date)}`,
+    `&top=${encodeURIComponent(topResults[0]?.player_name || '')}`,
+    `&topVotes=${topResults[0]?.vote_count || 0}`,
+    `&flop=${encodeURIComponent(flopResults[0]?.player_name || '')}`,
+    `&flopVotes=${flopResults[0]?.vote_count || 0}`,
+    session.include_best_action && bestActionResults[0] ? `&bestAction=${encodeURIComponent(bestActionResults[0].player_name)}&bestActionVotes=${bestActionResults[0].vote_count}` : '',
+  ].join('') : ''
 
-  // 🎯 NOUVELLE FONCTION : Grouper les résultats par rang
-  const groupByRank = (results: PodiumResult[]) => {
-    const grouped: Record<number, PodiumResult[]> = {}
-    results.forEach(result => {
-      if (!grouped[result.rank]) {
-        grouped[result.rank] = []
-      }
-      grouped[result.rank].push(result)
-    })
-    return grouped
-  }
-
-  // 🎯 NOUVEAU COMPOSANT : Podium avec ex-aequo
-  const PodiumWithTies = ({ results, color }: { results: PodiumResult[], color: string }) => {
-    const grouped = groupByRank(results)
-    const ranks = Object.keys(grouped).map(Number).sort()
-
+  if (loading) {
     return (
-      <div className="flex items-end justify-center gap-4 mb-8">
-        {ranks.map(rank => {
-          const playersAtRank = grouped[rank]
-          const podiumOrder = rank === 1 ? 'order-2' : rank === 2 ? 'order-1' : 'order-3'
-          
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center gap-6">
+        <div className="relative">
+          <Trophy className="text-yellow-400" size={64} />
+          <div className="absolute inset-0 animate-ping rounded-full bg-yellow-400/20" />
+        </div>
+        <p className="text-white text-lg font-semibold animate-pulse">Calcul des résultats…</p>
+      </div>
+    )
+  }
+
+  if (!session) return null
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pb-16">
+      {/* Header sticky */}
+      <header className="bg-slate-900/80 backdrop-blur-sm border-b border-white/10 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+          <button onClick={() => router.push('/dashboard')} className="flex items-center gap-2 text-gray-400 hover:text-white transition">
+            <ArrowLeft size={20} />
+            <span className="text-sm">Dashboard</span>
+          </button>
+          <span className="text-white font-semibold text-sm">vs {session.match.opponent}</span>
+          <button
+            onClick={handleShare}
+            className="flex items-center gap-1.5 bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/30 text-purple-300 px-3 py-1.5 rounded-lg text-sm font-medium transition"
+          >
+            {copied ? <Check size={15} /> : <Share2 size={15} />}
+            Partager
+          </button>
+        </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto px-4 pt-8 space-y-8">
+
+        {/* Titre */}
+        <div
+          className="text-center transition-all duration-700"
+          style={{ opacity: revealed.header ? 1 : 0, transform: revealed.header ? 'translateY(0)' : 'translateY(24px)' }}
+        >
+          <div className="relative inline-block mb-4">
+            <Trophy className="text-yellow-400" size={72} />
+            <div className="absolute -inset-4 rounded-full bg-yellow-400/10 animate-pulse" />
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">Résultats du match</h1>
+          <p className="text-purple-300 text-lg font-medium">vs {session.match.opponent}</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {new Date(session.match.match_date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+
+        {/* TOP */}
+        <Section revealed={!!revealed.top} delay={0}>
+          <SectionHeader icon={<TrendingUp className="text-green-400" size={28} />} label="TOP du match" color="text-green-400" />
+          <Podium results={topResults} colorClass="green" />
+        </Section>
+
+        {/* FLOP */}
+        <Section revealed={!!revealed.flop} delay={0}>
+          <SectionHeader icon={<TrendingDown className="text-red-400" size={28} />} label="FLOP du match" color="text-red-400" />
+          <Podium results={flopResults} colorClass="red" />
+        </Section>
+
+        {/* BEST ACTION */}
+        {session.include_best_action && bestActionResults.length > 0 && (
+          <Section revealed={!!revealed.best} delay={0}>
+            <SectionHeader icon={<Sparkles className="text-amber-400" size={28} />} label="Plus beau geste" color="text-amber-400" />
+            <Podium results={bestActionResults} colorClass="amber" />
+          </Section>
+        )}
+
+        {/* WORST ACTION */}
+        {session.include_worst_action && worstActionResults.length > 0 && (
+          <Section revealed={!!revealed.worst} delay={0}>
+            <SectionHeader icon={<Flame className="text-pink-400" size={28} />} label="Plus beau fail" color="text-pink-400" />
+            <Podium results={worstActionResults} colorClass="pink" />
+          </Section>
+        )}
+
+        {/* PRÉDICTIONS */}
+        {predictionStats && predictionStats.total_predictions > 0 && (
+          <Section revealed={!!revealed.predictions} delay={0}>
+            <SectionHeader icon={<Target className="text-purple-400" size={28} />} label="Prédictions" color="text-purple-400" />
+            <div className="grid grid-cols-3 gap-3 mt-4">
+              {[
+                { label: 'TOP correct', value: predictionStats.top_correct, color: 'text-green-400' },
+                { label: 'FLOP correct', value: predictionStats.flop_correct, color: 'text-red-400' },
+                { label: 'Parfaites', value: predictionStats.both_correct, color: 'text-purple-400' },
+              ].map(stat => (
+                <div key={stat.label} className="bg-slate-800/60 rounded-xl p-4 text-center">
+                  <p className={`text-3xl font-bold ${stat.color}`}>{stat.value}<span className="text-gray-500 text-lg">/{predictionStats.total_predictions}</span></p>
+                  <p className="text-gray-400 text-xs mt-1">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* BOUTON PARTAGE + IMAGE */}
+        <div
+          className="transition-all duration-700"
+          style={{ opacity: revealed.share ? 1 : 0, transform: revealed.share ? 'translateY(0)' : 'translateY(16px)' }}
+        >
+          <div className="bg-slate-800/40 border border-white/10 rounded-2xl p-6 text-center space-y-4">
+            <p className="text-white font-semibold">Partager les résultats</p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                onClick={handleShare}
+                className="flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition"
+              >
+                <Share2 size={18} />
+                {'share' in navigator ? 'Partager' : 'Copier le lien'}
+              </button>
+              <a
+                href={shareImageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 border border-white/10 text-white px-6 py-3 rounded-xl font-semibold transition"
+                download="resultats-the-third.png"
+              >
+                <Copy size={18} />
+                Image à partager
+              </a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+// ─── Composants locaux ────────────────────────────────────────────
+
+function Section({ children, revealed, delay }: { children: React.ReactNode; revealed: boolean; delay: number }) {
+  return (
+    <div
+      className="bg-slate-800/40 border border-white/10 rounded-2xl p-6 transition-all duration-700"
+      style={{
+        opacity: revealed ? 1 : 0,
+        transform: revealed ? 'translateY(0)' : 'translateY(32px)',
+        transitionDelay: `${delay}ms`
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function SectionHeader({ icon, label, color }: { icon: React.ReactNode; label: string; color: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-6">
+      {icon}
+      <h2 className={`text-xl font-bold text-white`}>{label}</h2>
+    </div>
+  )
+}
+
+const colorMap: Record<string, { bar: string; text: string; glow: string; bg: string }> = {
+  green: { bar: 'from-green-500 to-emerald-600', text: 'text-green-400', glow: 'shadow-green-500/40', bg: 'bg-green-500/10' },
+  red:   { bar: 'from-red-500 to-orange-600',   text: 'text-red-400',   glow: 'shadow-red-500/40',   bg: 'bg-red-500/10' },
+  amber: { bar: 'from-amber-500 to-yellow-600', text: 'text-amber-400', glow: 'shadow-amber-500/40', bg: 'bg-amber-500/10' },
+  pink:  { bar: 'from-pink-500 to-rose-600',    text: 'text-pink-400',  glow: 'shadow-pink-500/40',  bg: 'bg-pink-500/10' },
+}
+
+const rankLabel: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
+const barHeights: Record<number, string> = { 1: '120px', 2: '80px', 3: '56px' }
+
+function Podium({ results, colorClass }: { results: PodiumResult[]; colorClass: string }) {
+  const c = colorMap[colorClass]
+
+  if (!results.length) return <p className="text-center text-gray-400 py-4">Aucun vote</p>
+
+  // Grouper par rang
+  const grouped: Record<number, PodiumResult[]> = {}
+  results.forEach(r => { grouped[r.rank] = [...(grouped[r.rank] || []), r] })
+  const ranks = Object.keys(grouped).map(Number).sort()
+
+  // Ordre visuel : 2 - 1 - 3
+  const ordered = [2, 1, 3].filter(r => grouped[r])
+
+  return (
+    <div>
+      {/* Podium visuel */}
+      <div className="flex items-end justify-center gap-2 sm:gap-4 mb-6">
+        {ordered.map(rank => {
+          const players = grouped[rank]
+          const isWinner = rank === 1
           return (
-            <div
-              key={rank}
-              className={`flex flex-col items-center ${podiumOrder}`}
-              style={{ minWidth: playersAtRank.length > 1 ? `${200 * playersAtRank.length}px` : '200px' }}
-            >
-              {/* Médaille(s) */}
-              <div className="flex gap-2 mb-4 justify-center">
-                {playersAtRank.map((player) => (
-                  <div
-                    key={player.player_id}
-                    className={`w-16 h-16 rounded-full bg-gradient-to-br ${getMedalColor(rank)} flex items-center justify-center text-white font-bold text-2xl shadow-lg`}
-                  >
-                    {rank}
+            <div key={rank} className="flex flex-col items-center" style={{ minWidth: isWinner ? 120 : 90 }}>
+              {/* Emoji médaille */}
+              <span className="text-2xl sm:text-3xl mb-2">{rankLabel[rank]}</span>
+
+              {/* Noms */}
+              <div className="text-center mb-2 space-y-1">
+                {players.map(p => (
+                  <div key={p.player_id}>
+                    <p className={`font-bold text-white text-xs sm:text-sm leading-tight ${isWinner ? 'text-sm sm:text-base' : ''}`}>{p.player_name}</p>
+                    <p className={`${c.text} text-xs font-semibold`}>{p.vote_count}v · {p.percentage}%</p>
                   </div>
                 ))}
               </div>
 
-              {/* Noms et stats */}
-              <div className="flex gap-2 mb-4 w-full">
-                {playersAtRank.map((player) => (
-                  <div
-                    key={player.player_id}
-                    className="bg-slate-800/50 rounded-lg p-4 flex-1 text-center"
-                  >
-                    <p className="font-bold text-white text-base mb-2 break-words">{player.player_name}</p>
-                    <p className={`${color} text-2xl font-bold`}>{player.vote_count} votes</p>
-                    <p className="text-gray-400 text-sm">{player.percentage}%</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Colonne du podium */}
-              <div className={`w-full ${getPodiumHeight(rank)} bg-gradient-to-t ${getMedalColor(rank)} rounded-t-xl flex items-center justify-center transition-all duration-500`}>
-                <span className="text-white font-bold text-4xl">{rank}</span>
+              {/* Barre */}
+              <div
+                className={`w-full bg-gradient-to-t ${c.bar} rounded-t-lg flex items-center justify-center ${isWinner ? `shadow-lg ${c.glow}` : ''}`}
+                style={{ height: barHeights[rank] || '56px' }}
+              >
+                <span className="text-white font-black text-lg sm:text-2xl">{rank}</span>
               </div>
             </div>
           )
         })}
       </div>
-    )
-  }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <Loader className="animate-spin text-purple-400" size={48} />
-      </div>
-    )
-  }
-
-  if (!session) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-        <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-8 max-w-md text-center">
-          <h2 className="text-2xl font-bold text-white mb-2">Session introuvable</h2>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="mt-4 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
-          >
-            Retour au dashboard
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 sm:p-8">
-      <div className="max-w-6xl mx-auto">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="text-purple-300 hover:text-purple-100 mb-6 flex items-center gap-2 transition"
-        >
-          <ArrowLeft size={20} />
-          Retour au dashboard
-        </button>
-
-        {/* Header */}
-        <div className="text-center mb-12">
-          <Trophy className="text-yellow-400 mx-auto mb-4" size={64} />
-          <h1 className="text-4xl font-bold text-white mb-2">Résultats du match</h1>
-          <p className="text-xl text-gray-300">
-            Contre <span className="font-semibold text-purple-300">{session.match.opponent}</span>
-          </p>
-          <p className="text-gray-400">
-            {new Date(session.match.match_date).toLocaleDateString('fr-FR', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}
-          </p>
-        </div>
-
-        {/* 🎤 NOUVEAU : Lecteurs désignés */}
-        {session.status === 'reading' && (topReaderName || flopReaderName) && (
-          <div className="bg-gradient-to-br from-purple-900/40 to-pink-900/40 border border-purple-500/40 rounded-2xl p-6 mb-8">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <Mic className="text-purple-400" size={32} />
-              <h2 className="text-2xl font-bold text-white">Lecteurs désignés</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {topReaderName && (
-                <div className="bg-slate-800/50 rounded-xl p-6 text-center border-2 border-green-500/30">
-                  <p className="text-gray-400 mb-2">Lecteur TOP</p>
-                  <div className="flex items-center justify-center gap-3">
-                    <TrendingUp className="text-green-400" size={24} />
-                    <p className="text-2xl font-bold text-white">{topReaderName}</p>
-                  </div>
-                </div>
-              )}
-              {flopReaderName && (
-                <div className="bg-slate-800/50 rounded-xl p-6 text-center border-2 border-red-500/30">
-                  <p className="text-gray-400 mb-2">Lecteur FLOP</p>
-                  <div className="flex items-center justify-center gap-3">
-                    <TrendingDown className="text-red-400" size={24} />
-                    <p className="text-2xl font-bold text-white">{flopReaderName}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-12">
-          {/* Stats des prédictions */}
-          {session.include_predictions && predictionStats.total_predictions > 0 && (
-            <div className="bg-gradient-to-br from-purple-900/30 to-indigo-900/30 border border-purple-500/30 rounded-2xl p-8">
-              <div className="flex items-center justify-center gap-3 mb-6">
-                <Target className="text-purple-400" size={32} />
-                <h2 className="text-3xl font-bold text-white">Précision des prédictions</h2>
+      {/* Liste complète sous le podium */}
+      <div className="space-y-2 mt-2">
+        {ranks.map(rank => (
+          grouped[rank].map(p => (
+            <div key={p.player_id} className={`flex items-center gap-3 ${c.bg} rounded-xl px-4 py-2.5 ${rank === 1 ? 'border border-white/10' : ''}`}>
+              <span className="text-lg w-8 text-center">{rankLabel[rank]}</span>
+              <span className="text-white font-semibold flex-1">{p.player_name}</span>
+              <span className={`${c.text} font-bold text-sm`}>{p.vote_count} vote{p.vote_count > 1 ? 's' : ''}</span>
+              <div className="w-16 bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                <div className={`h-full bg-gradient-to-r ${c.bar} rounded-full`} style={{ width: `${p.percentage}%` }} />
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-slate-700/30 rounded-lg p-6 text-center">
-                  <p className="text-gray-400 mb-2">Prédictions TOP correctes</p>
-                  <p className="text-4xl font-bold text-green-400">
-                    {predictionStats.top_correct}/{predictionStats.total_predictions}
-                  </p>
-                  <p className="text-gray-400 text-sm mt-2">
-                    {Math.round((predictionStats.top_correct / predictionStats.total_predictions) * 100)}% de réussite
-                  </p>
-                </div>
-
-                <div className="bg-slate-700/30 rounded-lg p-6 text-center">
-                  <p className="text-gray-400 mb-2">Prédictions FLOP correctes</p>
-                  <p className="text-4xl font-bold text-red-400">
-                    {predictionStats.flop_correct}/{predictionStats.total_predictions}
-                  </p>
-                  <p className="text-gray-400 text-sm mt-2">
-                    {Math.round((predictionStats.flop_correct / predictionStats.total_predictions) * 100)}% de réussite
-                  </p>
-                </div>
-
-                <div className="bg-slate-700/30 rounded-lg p-6 text-center">
-                  <p className="text-gray-400 mb-2">Prédictions parfaites</p>
-                  <p className="text-4xl font-bold text-purple-400">
-                    {predictionStats.both_correct}/{predictionStats.total_predictions}
-                  </p>
-                  <p className="text-gray-400 text-sm mt-2">
-                    TOP et FLOP corrects
-                  </p>
-                </div>
-              </div>
+              <span className="text-gray-400 text-xs w-8 text-right">{p.percentage}%</span>
             </div>
-          )}
-
-          {/* Podium TOP avec ex-aequo */}
-          <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-2xl p-8">
-            <div className="flex items-center justify-center gap-3 mb-8">
-              <TrendingUp className="text-green-400" size={32} />
-              <h2 className="text-3xl font-bold text-white">Top du match</h2>
-            </div>
-
-            {topResults.length > 0 ? (
-              <PodiumWithTies results={topResults} color="text-green-400" />
-            ) : (
-              <p className="text-center text-gray-400">Aucun vote enregistré</p>
-            )}
-          </div>
-
-          {/* Podium FLOP avec ex-aequo */}
-          <div className="bg-gradient-to-br from-red-900/30 to-orange-900/30 border border-red-500/30 rounded-2xl p-8">
-            <div className="flex items-center justify-center gap-3 mb-8">
-              <TrendingDown className="text-red-400" size={32} />
-              <h2 className="text-3xl font-bold text-white">Flop du match</h2>
-            </div>
-
-            {flopResults.length > 0 ? (
-              <PodiumWithTies results={flopResults} color="text-red-400" />
-            ) : (
-              <p className="text-center text-gray-400">Aucun vote enregistré</p>
-            )}
-          </div>
-
-          {/* Podium Plus beau geste avec ex-aequo */}
-          {session.include_best_action && bestActionResults.length > 0 && (
-            <div className="bg-gradient-to-br from-blue-900/30 to-cyan-900/30 border border-blue-500/30 rounded-2xl p-8">
-              <div className="flex items-center justify-center gap-3 mb-8">
-                <Sparkles className="text-blue-400" size={32} />
-                <h2 className="text-3xl font-bold text-white">Plus beau geste</h2>
-              </div>
-
-              <PodiumWithTies results={bestActionResults} color="text-blue-400" />
-            </div>
-          )}
-
-          {/* Podium Plus beau fail avec ex-aequo */}
-          {session.include_worst_action && worstActionResults.length > 0 && (
-            <div className="bg-gradient-to-br from-orange-900/30 to-amber-900/30 border border-orange-500/30 rounded-2xl p-8">
-              <div className="flex items-center justify-center gap-3 mb-8">
-                <Flame className="text-orange-400" size={32} />
-                <h2 className="text-3xl font-bold text-white">Plus beau fail</h2>
-              </div>
-
-              <PodiumWithTies results={worstActionResults} color="text-orange-400" />
-            </div>
-          )}
-        </div>
+          ))
+        ))}
       </div>
     </div>
   )
