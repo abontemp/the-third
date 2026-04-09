@@ -2,7 +2,7 @@
 import { logger } from '@/lib/utils/logger'
 import { createClient } from '@/lib/supabase/client'
 import { getDisplayName } from '@/lib/utils/displayName'
-import { ArrowLeft, Loader, Award, Trophy, Zap, Target, Shield, Crown, TrendingUp, Star, Users, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Loader, Award, Trophy, Zap, Target, Shield, Crown, TrendingUp, Star, Users, ChevronDown, ChevronUp, Ghost, Skull } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 
@@ -79,6 +79,22 @@ const BADGE_DEFINITIONS: BadgeDefinition[] = [
     criteria: 'Faire 5 prédictions correctes consécutives (TOP ou FLOP)',
     icon: Star,
     color: 'from-violet-500 to-purple-500'
+  },
+  {
+    id: 'fantome',
+    name: 'Fantôme',
+    description: 'Invisible aux yeux de l\'équipe',
+    criteria: 'N\'avoir jamais reçu le moindre vote TOP ou FLOP depuis votre arrivée dans l\'équipe',
+    icon: Ghost,
+    color: 'from-slate-400 to-slate-600'
+  },
+  {
+    id: 'worst_of_the_worst',
+    name: 'Worst of the Worst',
+    description: 'Le joueur le plus floppé de l\'histoire',
+    criteria: 'Détenir le record absolu de votes FLOP dans toute l\'histoire de l\'équipe (minimum 3)',
+    icon: Skull,
+    color: 'from-red-800 to-red-950'
   }
 ]
 
@@ -184,6 +200,65 @@ export default function BadgesPage() {
         .eq('team_id', membership.team_id)
 
       const myBadgeTypes = userBadges?.map(b => b.badge_type) || []
+
+      // ── Calcul dynamique des badges Fantôme & Worst of the Worst ──
+      try {
+        const { data: teamSeasons } = await supabase
+          .from('seasons')
+          .select('id')
+          .eq('team_id', membership.team_id)
+
+        if (teamSeasons?.length) {
+          const { data: teamMatches } = await supabase
+            .from('matches')
+            .select('id')
+            .in('season_id', teamSeasons.map(s => s.id))
+
+          if (teamMatches?.length) {
+            const { data: teamSessions } = await supabase
+              .from('voting_sessions')
+              .select('id')
+              .in('match_id', teamMatches.map(m => m.id))
+
+            if (teamSessions?.length) {
+              const { data: allVotes } = await supabase
+                .from('votes')
+                .select('top_player_id, flop_player_id')
+                .in('session_id', teamSessions.map(s => s.id))
+
+              if (allVotes) {
+                // Fantôme : jamais apparu comme top ou flop
+                const hasReceivedVote = allVotes.some(
+                  v => v.top_player_id === user.id || v.flop_player_id === user.id
+                )
+                if (!hasReceivedVote && !myBadgeTypes.includes('fantome')) {
+                  myBadgeTypes.push('fantome')
+                }
+
+                // Worst of the Worst : plus grand nombre de votes FLOP (min 3)
+                const flopCounts: Record<string, number> = {}
+                allVotes.forEach(v => {
+                  if (v.flop_player_id) {
+                    flopCounts[v.flop_player_id] = (flopCounts[v.flop_player_id] || 0) + 1
+                  }
+                })
+                const sorted = Object.entries(flopCounts).sort((a, b) => b[1] - a[1])
+                if (
+                  sorted.length > 0 &&
+                  sorted[0][0] === user.id &&
+                  sorted[0][1] >= 3 &&
+                  !myBadgeTypes.includes('worst_of_the_worst')
+                ) {
+                  myBadgeTypes.push('worst_of_the_worst')
+                }
+              }
+            }
+          }
+        }
+      } catch (dynErr) {
+        logger.error('Erreur calcul badges dynamiques:', dynErr)
+      }
+
       setMyBadges(myBadgeTypes)
 
       logger.log('✅ Badges chargés:', myBadgeTypes)
