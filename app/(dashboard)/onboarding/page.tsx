@@ -7,6 +7,29 @@ import { useState, useEffect } from 'react'
 import { Users, Plus, LogIn, Loader, Search, Hash, CheckCircle, ArrowLeft, Clock, RefreshCw, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
+const TUTORIAL_SLIDES = [
+  {
+    emoji: '🏆',
+    title: 'Bienvenue sur The Third',
+    description: 'L\'app de vote de ton équipe pour élire le TOP et le FLOP de chaque match.',
+  },
+  {
+    emoji: '👥',
+    title: 'Crée ou rejoins ton équipe',
+    description: 'Le manager crée l\'équipe et partage un code unique à ses joueurs pour qu\'ils rejoignent.',
+  },
+  {
+    emoji: '🗳️',
+    title: 'Vote après chaque match',
+    description: 'Le manager ouvre un vote, tu choisis le meilleur et le moins bon du match.',
+  },
+  {
+    emoji: '✨',
+    title: 'Résultats & badges',
+    description: 'Résultats animés, image à partager avec l\'équipe, et badges à débloquer sur la saison.',
+  },
+]
+
 type Team = {
   id: string
   name: string
@@ -28,7 +51,8 @@ export default function OnboardingPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [step, setStep] = useState<'loading' | 'choice' | 'create' | 'join' | 'pending'>('loading')
+  const [step, setStep] = useState<'loading' | 'tutorial' | 'choice' | 'create' | 'join' | 'pending'>('loading')
+  const [tutorialSlide, setTutorialSlide] = useState(0)
   const [creating, setCreating] = useState(false)
   const [joining, setJoining] = useState(false)
   const [searching, setSearching] = useState(false)
@@ -78,7 +102,8 @@ export default function OnboardingPage() {
         setPendingRequests(requests)
         setStep('pending')
       } else {
-        setStep('choice')
+        const hasSeen = localStorage.getItem('has_seen_tutorial')
+        setStep(hasSeen ? 'choice' : 'tutorial')
       }
     } catch (err) {
       logger.error('Erreur init:', err)
@@ -298,6 +323,11 @@ export default function OnboardingPage() {
     }
   }
 
+  const completeTutorial = () => {
+    localStorage.setItem('has_seen_tutorial', '1')
+    setStep('choice')
+  }
+
   const resetJoinForm = () => {
     setSearched(false)
     setSearchResults([])
@@ -322,6 +352,69 @@ export default function OnboardingPage() {
           <img src="/logo.svg" alt="The Third" className="w-14 h-14 mx-auto mb-3" />
           <span className="text-white/60 text-sm font-medium">The Third</span>
         </div>
+
+        {/* ─── TUTORIAL ─── */}
+        {step === 'tutorial' && (
+          <div>
+            {/* Passer */}
+            <div className="flex justify-end mb-6">
+              <button
+                onClick={completeTutorial}
+                className="text-gray-500 hover:text-gray-300 text-sm transition"
+              >
+                Passer →
+              </button>
+            </div>
+
+            {/* Dots de progression */}
+            <div className="flex justify-center gap-2 mb-10">
+              {TUTORIAL_SLIDES.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setTutorialSlide(i)}
+                  className={`h-2 rounded-full transition-all ${
+                    i === tutorialSlide ? 'w-6 bg-white' : 'w-2 bg-white/30'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {/* Slide */}
+            <div className="text-center mb-12 px-4">
+              <div className="text-8xl mb-6 select-none">{TUTORIAL_SLIDES[tutorialSlide].emoji}</div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-white mb-4">
+                {TUTORIAL_SLIDES[tutorialSlide].title}
+              </h1>
+              <p className="text-gray-400 text-lg leading-relaxed">
+                {TUTORIAL_SLIDES[tutorialSlide].description}
+              </p>
+            </div>
+
+            {/* Boutons */}
+            <div className="flex gap-3">
+              {tutorialSlide > 0 && (
+                <button
+                  onClick={() => setTutorialSlide(s => s - 1)}
+                  className="flex-1 bg-slate-700/50 border border-white/10 hover:bg-slate-700 text-white py-4 rounded-xl font-semibold transition"
+                >
+                  ← Précédent
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (tutorialSlide < TUTORIAL_SLIDES.length - 1) {
+                    setTutorialSlide(s => s + 1)
+                  } else {
+                    completeTutorial()
+                  }
+                }}
+                className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-4 rounded-xl font-bold transition"
+              >
+                {tutorialSlide < TUTORIAL_SLIDES.length - 1 ? 'Suivant →' : 'C\'est parti ! 🚀'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ─── ÉCRAN EN ATTENTE ─── */}
         {step === 'pending' && (
