@@ -77,7 +77,7 @@ export default function VotePage() {
           include_predictions,
           include_best_action,
           include_worst_action,
-          match:match_id(opponent, match_date)
+          match:match_id(opponent, match_date, season:season_id(team_id))
         `)
         .eq('id', sessionId)
         .single()
@@ -88,13 +88,18 @@ export default function VotePage() {
         return
       }
 
+      // Extraire le team_id depuis la réponse brute avant de typer
+      const rawMatch = Array.isArray(sessionData.match) ? sessionData.match[0] : sessionData.match
+      const rawSeason = rawMatch ? (Array.isArray(rawMatch.season) ? rawMatch.season[0] : rawMatch.season) : null
+      const teamId = (rawSeason as { team_id: string } | null)?.team_id
+
       const sessionFormatted: VotingSession = {
         id: sessionData.id,
         status: sessionData.status,
         include_predictions: sessionData.include_predictions,
         include_best_action: sessionData.include_best_action,
         include_worst_action: sessionData.include_worst_action,
-        match: Array.isArray(sessionData.match) ? sessionData.match[0] : sessionData.match
+        match: { opponent: rawMatch?.opponent || '', match_date: rawMatch?.match_date || '' }
       }
 
       setSession(sessionFormatted)
@@ -119,28 +124,29 @@ export default function VotePage() {
         return
       }
 
-      // Récupérer les participants
-      const { data: participantsData } = await supabase
-        .from('session_participants')
-        .select('user_id')
-        .eq('session_id', sessionId)
+      // Récupérer TOUS les membres de l'équipe (pas seulement les participants à la session)
+      if (teamId) {
+        const { data: teamMembersData } = await supabase
+          .from('team_members')
+          .select('user_id')
+          .eq('team_id', teamId)
 
-      if (participantsData) {
-        const userIds = participantsData.map(p => p.user_id)
-        const { data: profilesData } = await supabase
-          .from('profiles')
-          .select('id, first_name, last_name, nickname, email')
-          .in('id', userIds)
+        if (teamMembersData) {
+          const userIds = teamMembersData.map(m => m.user_id)
+          const { data: profilesData } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name, nickname, email')
+            .in('id', userIds)
 
-        const formattedMembers = participantsData.map(p => {
-          const profile = profilesData?.find(prof => prof.id === p.user_id)
-          return {
-            user_id: p.user_id,
-            display_name: getDisplayName(profile)
-          }
-        })
+          const formattedMembers = teamMembersData
+            .map(m => {
+              const profile = profilesData?.find(prof => prof.id === m.user_id)
+              return { user_id: m.user_id, display_name: getDisplayName(profile) }
+            })
+            .sort((a, b) => a.display_name.localeCompare(b.display_name))
 
-        setMembers(formattedMembers)
+          setMembers(formattedMembers)
+        }
       }
 
     } catch (err) {

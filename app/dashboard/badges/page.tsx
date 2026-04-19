@@ -219,6 +219,7 @@ export default function BadgesPage() {
               .from('voting_sessions')
               .select('id')
               .in('match_id', teamMatches.map(m => m.id))
+              .eq('status', 'completed')
 
             if (teamSessions?.length) {
               const { data: allVotes } = await supabase

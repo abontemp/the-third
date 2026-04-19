@@ -683,11 +683,19 @@ export default function DashboardPage() {
     if (session.status === 'reading') {
       const isTopReader = session.top_reader_id === currentUserId
       const isFlopReader = session.flop_reader_id === currentUserId
-      
+      const isManagerUser = selectedTeam?.userRole === 'creator' || selectedTeam?.userRole === 'manager'
+
       if (isTopReader || isFlopReader) {
         return {
           label: '🎤 Vous êtes lecteur !',
           color: 'bg-purple-500/20 text-purple-300 border-purple-500/30 animate-pulse',
+          canRead: true
+        }
+      }
+      if (isManagerUser) {
+        return {
+          label: '🎤 Lecture en cours',
+          color: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
           canRead: true
         }
       }

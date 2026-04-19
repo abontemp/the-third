@@ -37,28 +37,11 @@ type VotingSession = {
   }
 }
 
-// Shuffle déterministe : même seed = même ordre pour tous les utilisateurs
-function seededRandom(seed: number) {
-  let s = seed
-  return () => {
-    s = (s * 1664525 + 1013904223) & 0xffffffff
-    return (s >>> 0) / 0xffffffff
-  }
-}
-
-function hashString(str: string): number {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0
-  }
-  return Math.abs(hash)
-}
-
-function shuffleArray<T>(array: T[], seed: string): T[] {
+// Mélange aléatoire (Fisher-Yates) — ordre différent à chaque lecture
+function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array]
-  const rand = seededRandom(hashString(seed))
   for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
+    const j = Math.floor(Math.random() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
@@ -212,7 +195,7 @@ export default function ReadingPage() {
       })
 
       // Formater et MÉLANGER les votes
-      const formattedVotes: Vote[] = shuffleArray(votesData.map(v => ({
+      const formattedVotes: Vote[] = shuffleArray(votesData.map((v: { id: string; user_id: string; top_player_id: string; top_comment: string; flop_player_id: string; flop_comment: string; best_action_player_id?: string | null; best_action_comment?: string | null; worst_action_player_id?: string | null; worst_action_comment?: string | null }) => ({
         id: v.id,
         voter_name: profilesMap[v.user_id] || 'Anonyme',
         top_player_id: v.top_player_id,
@@ -227,7 +210,7 @@ export default function ReadingPage() {
         worst_action_player_id: v.worst_action_player_id || undefined,
         worst_action_player_name: v.worst_action_player_id ? profilesMap[v.worst_action_player_id] : undefined,
         worst_action_comment: v.worst_action_comment || undefined
-      })), sessionId)
+      })))
 
       setVotes(formattedVotes)
 

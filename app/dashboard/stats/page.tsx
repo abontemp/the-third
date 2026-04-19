@@ -109,11 +109,12 @@ export default function StatsPage() {
         return
       }
 
-      // Récupérer toutes les sessions de vote
+      // Récupérer uniquement les sessions terminées (pour ne pas spoiler les votes en cours)
       const { data: sessions } = await supabase
         .from('voting_sessions')
         .select('id')
         .in('match_id', matchIds)
+        .eq('status', 'completed')
 
       const sessionIds = sessions?.map(s => s.id) || []
       logger.log(`✅ ${sessionIds.length} sessions trouvées`)
