@@ -821,6 +821,11 @@ export default function DashboardPage() {
                 onClick={async () => {
                   setRefreshing(true)
                   await loadTeamData()
+                  // Rafraîchir aussi les participants des sessions déjà ouvertes
+                  const loadedIds = Object.keys(sessionParticipants)
+                  if (loadedIds.length > 0) {
+                    await Promise.all(loadedIds.map(id => loadSessionParticipants(id)))
+                  }
                   setRefreshing(false)
                 }}
                 disabled={refreshing}
